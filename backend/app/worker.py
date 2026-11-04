@@ -16,13 +16,19 @@ from app.config import get_settings
 logger = logging.getLogger("agenthub.worker")
 
 
-async def ping(_: Any = None) -> str:
+async def ping(ctx: Any = None) -> str:
     logger.info("worker ping")
     return "pong"
 
 
+async def execute_task(ctx: Any, task_id: str) -> None:
+    from app.services.tasks import execute_task as run
+
+    await run(task_id)
+
+
 class WorkerSettings:
-    functions = [ping]
+    functions = [ping, execute_task]
     redis_settings = None  # filled below
 
     @staticmethod
@@ -35,4 +41,7 @@ class WorkerSettings:
         return WorkerSettings
 
 
-settings_obj = WorkerSettings.build()
+try:
+    settings_obj = WorkerSettings.build()
+except ImportError:  # ARQ is optional in local/test installations.
+    settings_obj = WorkerSettings

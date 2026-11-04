@@ -56,6 +56,10 @@ class InProcessQueue:
             self._stopping.clear()
             self._worker = asyncio.create_task(self._run(), name="agenthub-inprocess-queue")
 
+    @property
+    def running(self) -> bool:
+        return self._worker is not None and not self._worker.done()
+
     async def stop(self) -> None:
         self._stopping.set()
         if self._worker is not None:

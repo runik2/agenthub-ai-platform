@@ -12,7 +12,6 @@ import {
   Plug,
   ScrollText,
   Settings,
-  Wrench,
   Workflow,
   X,
 } from "lucide-react";
@@ -32,11 +31,10 @@ const mainNav = [
 ];
 
 const soonNav = [
-  { key: "nav.tasks", icon: ListChecks },
-  { key: "nav.workflows", icon: Workflow },
-  { key: "nav.tools", icon: Wrench },
-  { key: "nav.schedules", icon: CalendarClock },
-  { key: "nav.analytics", icon: BarChart3 },
+  { to: "/tasks", key: "nav.tasks", icon: ListChecks },
+  { to: "/workflows", key: "nav.workflows", icon: Workflow },
+  { to: "/schedules", key: "nav.schedules", icon: CalendarClock },
+  { to: "/analytics", key: "nav.analytics", icon: BarChart3 },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -60,6 +58,14 @@ export function AppShell({ children }: { children: ReactNode }) {
           ? t("nav.providers")
           : location.pathname.startsWith("/logs")
             ? t("nav.logs")
+            : location.pathname.startsWith("/tasks")
+              ? t("nav.tasks")
+              : location.pathname.startsWith("/workflows")
+                ? t("nav.workflows")
+                : location.pathname.startsWith("/schedules")
+                  ? t("nav.schedules")
+                  : location.pathname.startsWith("/analytics")
+                    ? t("nav.analytics")
             : t("nav.settings");
 
   const sidebar = (
@@ -116,13 +122,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         <ul className="space-y-0.5">
           {soonNav.map((item) => (
             <li key={item.key}>
-              <span className="flex cursor-not-allowed items-center gap-2 rounded-lg px-2 py-2 text-[13px] text-muted/60">
+              {item.to ? <NavLink to={item.to} className="flex items-center gap-2 rounded-lg px-2 py-2 text-[13px] text-muted hover:bg-raised hover:text-ink">
                 <item.icon size={15} />
                 <span className="truncate">{t(item.key)}</span>
-                <span className="ml-auto rounded border border-line px-1 py-0.5 text-[9px] uppercase tracking-wide">
-                  {t("common.soon")}
-                </span>
-              </span>
+              </NavLink> : null}
             </li>
           ))}
         </ul>

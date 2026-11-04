@@ -1,0 +1,37 @@
+from __future__ import annotations
+
+import pytest
+
+from app.queue.arq import ArqTaskQueue
+from app.schemas.tasks import Step
+from app.services.workflows import execute_workflow
+
+
+@pytest.mark.asyncio
+async def test_workflow_condition_and_safe_tools() -> None:
+    workflow = type("WorkflowStub", (), {"steps": [
+        Step(id="skip", tool="text_template", template="bad", condition="missing").model_dump(),
+        Step(id="json", tool="json_extract", path="answer").model_dump(),
+    ]})()
+    result = await execute_workflow(None, workflow, '{"answer":"ok"}')
+    assert result == "ok"
+
+
+def test_arq_queue_lifecycle_is_local_import_safe() -> None:
+    queue = ArqTaskQueue("redis://localhost:6379/0")
+    queue.start()
+    assert queue.name == "arq+redis"
+
+
+@pytest.mark.asyncio
+async def test_worker_ping() -> None:
+    from app.worker import ping
+
+    assert await ping() == "pong"
+
+
+@pytest.mark.asyncio
+async def test_analytics_export(client, auth_headers) -> None:
+    response = await client.get("/api/v1/analytics/export?format=csv", headers=auth_headers)
+    assert response.status_code == 200
+    assert "tasks,workflows,schedules,task_runs,days" in response.text

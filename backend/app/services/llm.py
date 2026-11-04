@@ -181,9 +181,7 @@ async def fetch_models(provider: LLMProvider) -> list[str]:
             raise _network_error(exc) from exc
 
     if response.status_code >= 400:
-        raise LLMError(
-            "PROVIDER_ERROR", f"Provider error {response.status_code}: {response.text[:200]}"
-        )
+        raise LLMError("PROVIDER_ERROR", f"Provider error {response.status_code}: {response.text[:200]}")
     payload = response.json()
     names: list[str] = []
     if provider.kind == "ollama":

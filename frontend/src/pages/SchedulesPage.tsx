@@ -1,0 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
+import { request } from "../api/client";
+import { useI18n } from "../i18n";
+export function SchedulesPage(){const {t}=useI18n(); const q=useQuery({queryKey:["schedules"],queryFn:()=>request<any[]>("/schedules")}); return <div className="mx-auto max-w-4xl space-y-4"><h1 className="text-xl font-semibold text-ink">{t("nav.schedules")}</h1>{q.isLoading?<p className="text-muted">{t("common.loading")}</p>:q.isError?<p className="text-red-500">{t("errors.NETWORK_ERROR")}</p>:q.data?.length?q.data.map((s:any)=><div className="rounded-xl border border-line bg-card p-4" key={s.id}><b className="text-ink">{s.name}</b><p className="text-sm text-muted">{s.cron} · {s.enabled?t("common.yes"):t("common.no")}</p></div>):<p className="text-muted">{t("common.nothingYet")}</p>}</div>}

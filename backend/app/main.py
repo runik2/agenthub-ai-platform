@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -12,9 +13,13 @@ from app.api.v1.router import api_router
 from app.config import get_settings
 from app.core.errors import register_exception_handlers
 from app.db.session import dispose_engine, get_session_factory, init_db
+from app.queue.arq import ArqTaskQueue
 from app.queue.inprocess import InProcessQueue
+from app.queue.runtime import set_queue
+from app.scheduler import tick
 from app.services.bootstrap import ensure_bootstrap_admin
 from app.services.seed import seed_demo
+from app.services.tasks import execute_task
 
 logger = logging.getLogger("agenthub")
 
@@ -38,12 +43,26 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         if settings.seed_demo_data:
             await seed_demo(session)
 
-    queue = InProcessQueue()
+    queue = ArqTaskQueue(settings.redis_url) if settings.is_docker_mode else InProcessQueue()
+    if isinstance(queue, InProcessQueue):
+        queue.register("execute_task", lambda payload: execute_task(payload["task_id"]))
+    set_queue(queue)
     queue.start()
+    scheduler_stopping = False
+
+    async def scheduler_loop() -> None:
+        while not scheduler_stopping:
+            await tick()
+            await asyncio.sleep(1)
+
+    scheduler_task = asyncio.create_task(scheduler_loop(), name="agenthub-scheduler")
     logger.info("AgentHub started in %s mode", settings.app_mode)
     try:
         yield
     finally:
+        scheduler_stopping = True
+        scheduler_task.cancel()
+        await asyncio.gather(scheduler_task, return_exceptions=True)
         await queue.stop()
         await dispose_engine()
 

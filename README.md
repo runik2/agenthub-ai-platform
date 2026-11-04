@@ -164,7 +164,19 @@ scheduler-цикла нет (это этап 3).
 2. Этап 4: workflow-движок (шаги, ветвления), инструменты агентов и права на них.
 3. Этап 5: расписания, полноценная аналитика, экспорт, CI и проверенный docker-контур.
 
+## Реализованные этапы 3–5
+
+Добавлены durable задачи и запуски (`pending/running/succeeded/failed`), retry с exponential backoff, local background execution, workflow definitions и schedules API. Local-контур использует SQLite и in-process asyncio; ARQ/Redis docker adapter написан, но локально не проверялся. Workflow steps декларативны и не исполняют arbitrary code.
+
+Новые endpoints: `/api/v1/tasks`, `/api/v1/workflows`, `/api/v1/schedules`. UI: `/tasks` и `/workflows`; auth и существующие API сохранены.
+
+Проверки: `cd backend; .venv\\Scripts\\python.exe -m pytest`, `ruff check app`, `cd frontend; npm run lint`. Docker-контур не заявляется проверенным: Docker/Redis/PostgreSQL в среде разработки отсутствуют.
+
 ## Структура репозитория
+
+### Примечание о текущей проверке
+
+Реализованы durable tasks через queue abstraction, retry с `next_run_at`, workflow execution с безопасным whitelist инструментов, cron scheduler, workflow run/update/delete и analytics summary/export. Docker-контур с Redis/ARQ/PostgreSQL в этой среде не запускался: Docker недоступен; его следует проверить интеграционно.
 
 ```
 backend/    FastAPI-приложение, тесты, миграции, скрипты

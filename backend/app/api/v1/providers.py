@@ -190,7 +190,12 @@ async def test_connection(
     if ok and models:
         provider.models_cache = models
     await write_audit(
-        session, request, user.id, "provider.checked", "provider", provider.id,
+        session,
+        request,
+        user.id,
+        "provider.checked",
+        "provider",
+        provider.id,
         {"status": provider.last_check_status},
     )
     await session.commit()

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any
 
@@ -26,17 +25,17 @@ class ArqTaskQueue(TaskQueue):
 
     async def _client(self):
         if self._redis is None:
-            from redis.asyncio import from_url  # local import is intentional
+            from arq import create_pool
+            from arq.connections import RedisSettings
 
-            self._redis = from_url(self.redis_url, decode_responses=True)
+            self._redis = await create_pool(RedisSettings.from_dsn(self.redis_url))
         return self._redis
 
     async def enqueue(self, task_name: str, payload: dict[str, Any]) -> str:
         client = await self._client()
-        job = {"task": task_name, "payload": payload}
-        job_id = await client.rpush("agenthub:jobs", json.dumps(job))
-        logger.info("queued %s as position %s", task_name, job_id)
-        return str(job_id)
+        job = await client.enqueue_job(task_name, **payload)
+        logger.info("queued %s as %s", task_name, job.job_id)
+        return str(job.job_id)
 
     async def health(self) -> bool:
         try:
@@ -44,3 +43,11 @@ class ArqTaskQueue(TaskQueue):
             return bool(await client.ping())
         except Exception:  # noqa: BLE001 - health must never raise
             return False
+
+    def start(self) -> None:
+        return None
+
+    async def stop(self) -> None:
+        if self._redis is not None:
+            await self._redis.close()
+            self._redis = None

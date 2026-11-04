@@ -1,0 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
+import { request } from "../api/client";
+import { useI18n } from "../i18n";
+export function AnalyticsPage(){const {t}=useI18n(); const q=useQuery({queryKey:["summary"],queryFn:()=>request<any>("/analytics/summary")}); return <div className="mx-auto max-w-4xl space-y-4"><h1 className="text-xl font-semibold text-ink">{t("nav.analytics")}</h1>{q.isLoading?<p className="text-muted">{t("common.loading")}</p>:q.isError?<p className="text-red-500">{t("errors.NETWORK_ERROR")}</p>:<div className="grid grid-cols-2 gap-3 md:grid-cols-4">{Object.entries(q.data||{}).filter(([k])=>k!=="days").map(([k,v])=><div className="rounded-xl border border-line bg-card p-4" key={k}><div className="text-sm text-muted">{k}</div><div className="text-2xl font-semibold text-ink">{String(v)}</div></div>)}</div>}</div>}

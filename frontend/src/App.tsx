@@ -14,6 +14,10 @@ import { LogsPage } from "./pages/LogsPage";
 import { ProvidersPage } from "./pages/ProvidersPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SetupPage } from "./pages/SetupPage";
+import { TasksPage } from "./pages/TasksPage";
+import { WorkflowsPage } from "./pages/WorkflowsPage";
+import { SchedulesPage } from "./pages/SchedulesPage";
+import { AnalyticsPage } from "./pages/AnalyticsPage";
 
 function Splash() {
   return (
@@ -126,6 +130,10 @@ export default function App() {
             </RequireAuth>
           }
         />
+        <Route path="/tasks" element={<RequireAuth><TasksPage /></RequireAuth>} />
+        <Route path="/workflows" element={<RequireAuth><WorkflowsPage /></RequireAuth>} />
+        <Route path="/schedules" element={<RequireAuth><SchedulesPage /></RequireAuth>} />
+        <Route path="/analytics" element={<RequireAuth><AnalyticsPage /></RequireAuth>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </SetupGuard>

@@ -21,7 +21,7 @@ def _prepare_sqlite_path(url: str) -> None:
     prefix = "sqlite+aiosqlite:///"
     if not url.startswith(prefix):
         return
-    raw = url[len(prefix):]
+    raw = url[len(prefix) :]
     if raw in {"", ":memory:"}:
         return
     path = Path(raw)
@@ -58,9 +58,7 @@ def get_engine():
 def get_session_factory() -> async_sessionmaker[AsyncSession]:
     global _session_factory
     if _session_factory is None:
-        _session_factory = async_sessionmaker(
-            bind=get_engine(), expire_on_commit=False, class_=AsyncSession
-        )
+        _session_factory = async_sessionmaker(bind=get_engine(), expire_on_commit=False, class_=AsyncSession)
     return _session_factory
 
 

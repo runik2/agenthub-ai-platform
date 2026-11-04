@@ -46,9 +46,7 @@ async def unique_slug(session: AsyncSession, name: str, ignore_id: str | None = 
 
 
 async def get_owned_agent(session: AsyncSession, user: User, agent_id: str) -> Agent:
-    agent = await session.scalar(
-        select(Agent).where(Agent.id == agent_id, Agent.owner_id == user.id)
-    )
+    agent = await session.scalar(select(Agent).where(Agent.id == agent_id, Agent.owner_id == user.id))
     if agent is None:
         raise AppError("AGENT_NOT_FOUND", "Agent not found", 404)
     return agent
@@ -141,7 +139,12 @@ async def create_from_template(
     session.add(agent)
     await session.flush()
     await write_audit(
-        session, request, user.id, "agent.created_from_template", "agent", agent.id,
+        session,
+        request,
+        user.id,
+        "agent.created_from_template",
+        "agent",
+        agent.id,
         {"template": template.slug},
     )
     await session.commit()

@@ -19,13 +19,9 @@ class Pagination:
         return (self.page - 1) * self.page_size
 
 
-async def paginate(
-    session: AsyncSession, stmt: Select, pagination: Pagination
-) -> tuple[list, int, int]:
+async def paginate(session: AsyncSession, stmt: Select, pagination: Pagination) -> tuple[list, int, int]:
     count_stmt = select(func.count()).select_from(stmt.order_by(None).subquery())
     total = int(await session.scalar(count_stmt) or 0)
-    rows = (
-        await session.scalars(stmt.offset(pagination.offset).limit(pagination.page_size))
-    ).all()
+    rows = (await session.scalars(stmt.offset(pagination.offset).limit(pagination.page_size))).all()
     pages = (total + pagination.page_size - 1) // pagination.page_size if total else 0
     return list(rows), total, pages

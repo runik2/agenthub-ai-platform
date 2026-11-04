@@ -14,7 +14,6 @@ def _check_email(value: str) -> str:
     return value
 
 
-
 class UserOut(ORMModel):
     id: str
     email: str

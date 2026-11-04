@@ -83,9 +83,7 @@ async def test_provider_connection_check_reports_failure(
     provider_id = created.json()["id"]
     mock_llm["handler"] = lambda request: httpx.Response(500, content=b"boom")
 
-    checked = await client.post(
-        f"/api/v1/providers/{provider_id}/test-connection", headers=auth_headers
-    )
+    checked = await client.post(f"/api/v1/providers/{provider_id}/test-connection", headers=auth_headers)
     assert checked.status_code == 200
     assert checked.json()["status"] == "error"
 
@@ -106,9 +104,7 @@ async def test_provider_connection_check_lists_models(
         200, json={"models": [{"name": "llama3.2:3b"}, {"name": "bge-m3:latest"}]}
     )
 
-    checked = await client.post(
-        f"/api/v1/providers/{provider_id}/test-connection", headers=auth_headers
-    )
+    checked = await client.post(f"/api/v1/providers/{provider_id}/test-connection", headers=auth_headers)
     assert checked.status_code == 200
     payload = checked.json()
     assert payload["status"] == "ok"

@@ -26,9 +26,7 @@ router = APIRouter(prefix="/conversations", tags=["conversations"])
 
 async def _get_conversation(session: AsyncSession, user: User, conversation_id: str) -> Conversation:
     conversation = await session.scalar(
-        select(Conversation).where(
-            Conversation.id == conversation_id, Conversation.user_id == user.id
-        )
+        select(Conversation).where(Conversation.id == conversation_id, Conversation.user_id == user.id)
     )
     if conversation is None:
         raise AppError("CONVERSATION_NOT_FOUND", "Conversation not found", 404)
@@ -66,9 +64,7 @@ async def create_conversation(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> ConversationDetail:
-    agent = await session.scalar(
-        select(Agent).where(Agent.id == payload.agent_id, Agent.owner_id == user.id)
-    )
+    agent = await session.scalar(select(Agent).where(Agent.id == payload.agent_id, Agent.owner_id == user.id))
     if agent is None:
         raise AppError("AGENT_NOT_FOUND", "Agent not found", 404)
     conversation = Conversation(
@@ -83,7 +79,12 @@ async def create_conversation(
     session.add(conversation)
     await session.flush()
     await write_audit(
-        session, request, user.id, "conversation.created", "conversation", conversation.id,
+        session,
+        request,
+        user.id,
+        "conversation.created",
+        "conversation",
+        conversation.id,
         {"agent_id": agent.id},
     )
     await session.commit()
@@ -134,9 +135,7 @@ async def delete_conversation(
 ) -> StatusResponse:
     conversation = await _get_conversation(session, user, conversation_id)
     await session.delete(conversation)
-    await write_audit(
-        session, request, user.id, "conversation.deleted", "conversation", conversation_id
-    )
+    await write_audit(session, request, user.id, "conversation.deleted", "conversation", conversation_id)
     await session.commit()
     return StatusResponse()
 

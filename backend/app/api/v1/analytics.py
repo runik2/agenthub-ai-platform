@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import csv
+import io
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +15,50 @@ from app.db.models import Agent, Conversation, LLMProvider, LLMUsage, Message, U
 from app.db.session import get_session
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
+
+
+@router.get("/summary")
+async def summary(
+    days: int = Query(30, ge=1, le=365),
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    from app.db.models import Schedule, Task, TaskRun, Workflow
+
+    def stats(model):
+        return session.scalar(select(func.count(model.id)).where(model.owner_id == user.id))
+
+    return {
+        "tasks": await stats(Task),
+        "workflows": await stats(Workflow),
+        "schedules": await stats(Schedule),
+        "task_runs": int(
+            await session.scalar(select(func.count(TaskRun.id)).join(Task).where(Task.owner_id == user.id))
+            or 0
+        ),
+        "days": days,
+    }
+
+
+@router.get("/export")
+async def export(
+    format: str = Query("json", pattern="^(json|csv)$"),
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    data = await summary(30, user, session)
+    if format == "json":
+        return data
+    out = io.StringIO()
+    writer = csv.DictWriter(out, fieldnames=data.keys())
+    writer.writeheader()
+    writer.writerow(data)
+    out.seek(0)
+    return StreamingResponse(
+        iter([out.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=analytics.csv"},
+    )
 
 
 @router.get("/overview")
@@ -39,10 +86,7 @@ async def overview(
         await session.scalar(select(func.count(Agent.id)).where(Agent.owner_id == user.id)) or 0
     )
     conversations_count = int(
-        await session.scalar(
-            select(func.count(Conversation.id)).where(Conversation.user_id == user.id)
-        )
-        or 0
+        await session.scalar(select(func.count(Conversation.id)).where(Conversation.user_id == user.id)) or 0
     )
     messages_count = int(
         await session.scalar(
@@ -53,9 +97,7 @@ async def overview(
         or 0
     )
     errors_count = int(
-        await session.scalar(
-            select(func.count(LLMUsage.id)).where(*usage_scope, LLMUsage.status == "error")
-        )
+        await session.scalar(select(func.count(LLMUsage.id)).where(*usage_scope, LLMUsage.status == "error"))
         or 0
     )
 
