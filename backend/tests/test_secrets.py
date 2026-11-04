@@ -9,7 +9,9 @@ from app.db.session import get_session_factory
 SECRET = "sk-live-very-secret-key-1234567890"
 
 
-async def test_api_key_never_leaves_the_backend(client: httpx.AsyncClient, auth_headers: dict[str, str]) -> None:
+async def test_api_key_never_leaves_the_backend(
+    client: httpx.AsyncClient, auth_headers: dict[str, str]
+) -> None:
     created = await client.post(
         "/api/v1/providers",
         json={

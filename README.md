@@ -1,0 +1,173 @@
+# AgentHub — платформа управления ИИ-агентами
+
+Веб-платформа для работы с ИИ-агентами: конструктор агентов, диалоги с реальной моделью, провайдеры
+моделей, учёт токенов и стоимости, аудит действий. Интерфейс на двух языках (RU/EN), тёмная и светлая
+темы.
+
+Проект собран в два архитектурных контура:
+
+| Контур | Статус | Компоненты |
+|---|---|---|
+| `APP_MODE=local` | **работает, проверен** | FastAPI + SQLite (aiosqlite), очередь и планировщик внутри процесса, Ollama на хосте |
+| `APP_MODE=docker` | **написан, не проверен** | PostgreSQL + Redis + ARQ worker + отдельный scheduler + nginx |
+
+> Docker-контур никогда не запускался: на машине разработчика не установлены Docker, PostgreSQL и Redis.
+> Файлы `docker-compose.yml`, `backend/Dockerfile`, `frontend/Dockerfile`, `backend/requirements-docker.txt`
+> и адаптер `backend/app/queue/arq.py` написаны по документации, но не проверены ни одной командой.
+
+## Что уже работает
+
+- Первичная настройка администратора, вход по JWT (Argon2id), защищённые маршруты, аудит входов.
+- CRUD агентов: промпт, приветствие, провайдер, модель, температура, лимит токенов, статус, цвет, теги.
+  6 шаблонов агентов, создание из шаблона, дублирование.
+- CRUD провайдеров: Ollama и OpenAI-совместимые, проверка соединения, получение списка моделей,
+  цены за 1M токенов, ключи шифруются (Fernet) и никогда не возвращаются в API.
+- **Реальный чат с агентом** через Ollama (`llama3.2:3b`) и любой OpenAI-совместимый `base_url`.
+  История диалога, системный промпт, запись `llm_usage` (токены, latency, стоимость).
+- Дашборд: метрики, график активности, топ агентов, статусы провайдеров за 7/30 дней.
+- Переключатель RU/EN (localStorage, по умолчанию RU), светлая/тёмная тема, адаптив до 390px.
+- Demo-данные создаются только при явной пометке: у демо-агентов тег `demo`, описание начинается
+  с `Demo data ·`, демо-сообщения имеют `metadata.demo = true`.
+
+## Быстрый старт (local, всё проверено)
+
+Нужны: Python 3.12+ (проверено на 3.14), Node 20+ (проверено на 26), Ollama с моделью `llama3.2:3b`.
+
+```bash
+# 1. окружение
+python -m venv .venv
+.venv/Scripts/python.exe -m pip install -r backend/requirements.txt      # Windows
+# .venv/bin/pip install -r backend/requirements.txt                      # macOS/Linux
+
+# 2. конфиг (можно не трогать — значения по умолчанию рабочие)
+cp backend/.env.example backend/.env
+
+# 3. backend
+cd backend
+../.venv/Scripts/python.exe -m uvicorn app.main:app --reload --port 8000
+```
+
+При первом старте создаётся администратор `admin@agenthub.local` / `admin12345`, база
+`backend/data/agenthub.db` и demo-данные. Сменить пароль и секреты — в `backend/.env`.
+
+```bash
+# 4. frontend (второй терминал)
+cd frontend
+npm install
+npm run dev          # http://localhost:5173, прокси /api -> 127.0.0.1:8000
+```
+
+Проверка API: `http://127.0.0.1:8000/api/docs`.
+
+### Сквозная проверка чата одной командой
+
+```bash
+cd backend
+../.venv/Scripts/python.exe scripts/smoke_chat.py
+```
+
+Скрипт логинится, берёт активного агента, отправляет сообщение в Ollama и печатает usage
+(`tokens_in`, `tokens_out`, `latency_ms`, `cost`) и агрегаты аналитики.
+
+## Ollama
+
+```bash
+ollama pull llama3.2:3b
+ollama serve            # http://127.0.0.1:11434
+```
+
+Приложение уже знает про `OLLAMA_BASE_URL=http://127.0.0.1:11434` и создаёт провайдера
+`Ollama (local)` с ценой 0. На CPU ответ 3B-модели занимает 10–40 секунд — таймаут клиента
+120 секунд, запрос синхронный.
+
+### OpenAI-совместимый провайдер
+
+Добавьте провайдера с типом `OpenAI-совместимый`, `base_url` вида `https://api.openai.com/v1`
+(обязательно с `/v1`) и ключом. Ключ шифруется Fernet, в ответах API видны только `has_api_key`
+и последние 4 символа. После сохранения нажмите «Проверить соединение» — список моделей подтянется
+из `/models`.
+
+## Проверки, которые реально выполнялись
+
+```bash
+cd backend
+../.venv/Scripts/python.exe -m pytest -q          # 25 passed
+../.venv/Scripts/python.exe -m ruff check app tests
+../.venv/Scripts/python.exe -m alembic upgrade head
+cd ../frontend && npm run build                    # tsc -b + vite build
+```
+
+- `GET /health/live` → 200, `GET /health/ready` → `{"status":"ok","db":"ok","mode":"local"}`.
+- Чат через Ollama: ответ получен, `llm_usage` записан (например 87 вход / 37 выход, latency 13.7 s).
+- Скриншоты 1280×800 и 390×844 на всех экранах, переключение RU→EN меняет заголовки и меню,
+  горизонтального переполнения нет (`document.body.scrollWidth == innerWidth`).
+
+## Архитектура
+
+```
+backend/app/
+  config.py           # Settings: APP_MODE, DATABASE_URL, секреты
+  db/                 # Base, session, ORM-модели (users, agents, llm_providers, conversations,
+                      # messages, llm_usage, audit_logs)
+  api/v1/             # auth, agents, providers, conversations, analytics, logs, settings, health
+  core/               # argon2+JWT, Fernet, единый формат ошибок, пагинация
+  services/           # llm (Ollama/openai), chat, pricing, agent_templates, seed, bootstrap
+  queue/              # Protocol TaskQueue + InProcessQueue (local) + ArqTaskQueue (docker)
+backend/alembic/      # миграции; локальный старт использует create_all
+frontend/src/
+  i18n/{ru,en}.ts     # весь текст интерфейса; типы гарантируют совпадение ключей
+  api/                # fetch-клиент с кодами ошибок, TanStack Query хуки
+  components/         # UI-кит, оболочка, модалки, тосты
+  pages/              # login, setup, dashboard, agents, agent form, chat, providers, logs, settings
+```
+
+**Двухрежимность.** Слой БД и очередь спрятаны за интерфейсами; режим выбирается `APP_MODE` и
+`DATABASE_URL`. `local` — SQLite через `aiosqlite` и `InProcessQueue` в том же процессе, без внешних
+сервисов. `docker` — PostgreSQL (`asyncpg`), Redis и ARQ-воркер отдельным контейнером, планировщик
+отдельным процессом. Код API от режима не зависит: endpoint не знает, какая очередь под ним.
+
+**i18n.** Ни одной строки в разметке: словари `frontend/src/i18n/ru.ts` и `en.ts`, тип `en` выводится
+из `ru`, поэтому пропущенный ключ ломает сборку. Язык в `localStorage`, по умолчанию `ru`.
+Ошибки API приходят кодами (`AGENT_NOT_FOUND`, `PROVIDER_TIMEOUT`), текст берётся из словаря
+`errors.*` на клиенте.
+
+**Ошибки и безопасность.** Единый формат `{"error": {"code", "message", "details"}}`, коды 400/401/403/
+404/409/422/502. Пароли — Argon2id. Секреты провайдеров — Fernet с ключом из `SECRET_ENCRYPTION_KEY`
+(или производным от `JWT_SECRET`). Ключи не попадают ни в ответы API, ни в логи; это покрыто тестом.
+
+## Docker-контур (не проверен)
+
+```bash
+docker compose up --build      # НЕ ЗАПУСКАЛОСЬ: на машине нет Docker
+```
+
+Сервисы: `db` (PostgreSQL 16), `redis`, `api` (миграции + uvicorn), `worker` (ARQ), `scheduler`,
+`web` (nginx со сборкой Vite и проксированием `/api`). Переменные: `POSTGRES_PASSWORD`, `JWT_SECRET`,
+`OLLAMA_BASE_URL` (для Ollama на хосте — `http://host.docker.internal:11434`).
+
+Ожидайте шероховатостей: контур не отлажен, `arq`-воркер пока умеет только `ping`, отдельного
+scheduler-цикла нет (это этап 3).
+
+## Ограничения этого этапа
+
+- Чат синхронный, без стриминга и без отмены запроса; SSE появится позже.
+- Заданий, workflow-движка, инструментов агентов, расписаний и полноценной аналитики нет — это
+  следующие этапы (в сайдбаре они помечены «скоро»).
+- Очередь и планировщик только как интерфейс и in-process заготовка.
+- Один тенант: агенты принадлежат владельцу, ролей две (admin/user), без команд и приглашений.
+- Rate limiting, refresh-токены и сброс пароля не реализованы.
+- Alembic настроен и проверен на SQLite, но локальный старт идёт через `create_all`.
+
+## Roadmap
+
+1. Этап 3: задания, очередь (ARQ + Redis), воркер, сохранение состояния и ретраи.
+2. Этап 4: workflow-движок (шаги, ветвления), инструменты агентов и права на них.
+3. Этап 5: расписания, полноценная аналитика, экспорт, CI и проверенный docker-контур.
+
+## Структура репозитория
+
+```
+backend/    FastAPI-приложение, тесты, миграции, скрипты
+frontend/   React + TypeScript + Vite + Tailwind
+docker-compose.yml
+```

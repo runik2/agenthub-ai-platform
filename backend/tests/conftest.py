@@ -87,7 +87,9 @@ def ollama_answer(content: str = "Mock answer from the model.", tokens_in: int =
         "eval_count": tokens_out,
         "done": True,
     }
-    return httpx.Response(200, content=json.dumps(payload).encode(), headers={"content-type": "application/json"})
+    return httpx.Response(
+        200, content=json.dumps(payload).encode(), headers={"content-type": "application/json"}
+    )
 
 
 @pytest.fixture
