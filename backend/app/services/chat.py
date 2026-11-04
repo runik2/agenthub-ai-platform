@@ -1,0 +1,162 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from decimal import Decimal
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.errors import AppError
+from app.db.models import Agent, Conversation, LLMProvider, LLMUsage, Message, User
+from app.services import llm
+from app.services.pricing import compute_cost
+
+HISTORY_LIMIT = 20
+FALLBACK_NOTICE_LIMIT = 60
+
+
+def _title_from(text: str) -> str:
+    clean = " ".join(text.strip().split())
+    if len(clean) <= FALLBACK_NOTICE_LIMIT:
+        return clean or "New conversation"
+    return clean[:FALLBACK_NOTICE_LIMIT].rstrip() + "…"
+
+
+def build_history(agent: Agent, messages: list[Message]) -> list[dict[str, str]]:
+    payload: list[dict[str, str]] = [{"role": "system", "content": agent.system_prompt}]
+    for message in messages[-HISTORY_LIMIT:]:
+        if message.role in {"user", "assistant"} and message.content:
+            payload.append({"role": message.role, "content": message.content})
+    return payload
+
+
+async def send_message(
+    session: AsyncSession,
+    user: User,
+    conversation: Conversation,
+    content: str,
+) -> dict:
+    agent = await session.get(Agent, conversation.agent_id)
+    if agent is None:
+        raise AppError("AGENT_NOT_FOUND", "Agent not found", 404)
+    if not agent.provider_id:
+        raise AppError("AGENT_NO_PROVIDER", "This agent has no model provider attached", 409)
+
+    provider = await session.get(LLMProvider, agent.provider_id)
+    if provider is None:
+        raise AppError("PROVIDER_NOT_FOUND", "The provider of this agent no longer exists", 409)
+    if not provider.is_active:
+        raise AppError("PROVIDER_INACTIVE", "The provider of this agent is disabled", 409)
+
+    now = datetime.now(UTC)
+    user_message = Message(
+        conversation_id=conversation.id,
+        role="user",
+        content=content.strip(),
+        meta={},
+    )
+    session.add(user_message)
+    await session.flush()
+
+    history_rows = (
+        await session.scalars(
+            select(Message)
+            .where(Message.conversation_id == conversation.id)
+            .order_by(Message.created_at.asc())
+        )
+    ).all()
+    payload = build_history(agent, list(history_rows))
+
+    model_name = agent.model_name or provider.default_model
+    try:
+        result = await llm.chat(
+            provider=provider,
+            model=model_name,
+            messages=payload,
+            temperature=agent.temperature,
+            max_tokens=agent.max_tokens,
+        )
+    except llm.LLMError as exc:
+        session.add(
+            LLMUsage(
+                conversation_id=conversation.id,
+                message_id=user_message.id,
+                agent_id=agent.id,
+                provider_id=provider.id,
+                model_name=model_name,
+                tokens_in=0,
+                tokens_out=0,
+                total_tokens=0,
+                latency_ms=0,
+                cost=Decimal("0"),
+                status="error",
+                error_code=exc.code,
+            )
+        )
+        conversation.message_count = (conversation.message_count or 0) + 1
+        conversation.last_message_at = now
+        await session.commit()
+        raise AppError(exc.code, exc.message, 502) from exc
+
+    cost = compute_cost(
+        result.tokens_in,
+        result.tokens_out,
+        provider.input_price_per_1m,
+        provider.output_price_per_1m,
+    )
+
+    assistant_message = Message(
+        conversation_id=conversation.id,
+        role="assistant",
+        content=result.content,
+        tokens_in=result.tokens_in,
+        tokens_out=result.tokens_out,
+        latency_ms=result.latency_ms,
+        model_name=result.model,
+        provider_id=provider.id,
+        meta={"estimated": result.estimated, "raw_usage": result.raw_usage},
+    )
+    session.add(assistant_message)
+    await session.flush()
+
+    session.add(
+        LLMUsage(
+            conversation_id=conversation.id,
+            message_id=assistant_message.id,
+            agent_id=agent.id,
+            provider_id=provider.id,
+            model_name=result.model,
+            tokens_in=result.tokens_in,
+            tokens_out=result.tokens_out,
+            total_tokens=result.tokens_in + result.tokens_out,
+            latency_ms=result.latency_ms,
+            cost=cost,
+            status="ok",
+        )
+    )
+
+    conversation.message_count = (conversation.message_count or 0) + 2
+    conversation.total_tokens = (conversation.total_tokens or 0) + result.tokens_in + result.tokens_out
+    conversation.total_cost = Decimal(conversation.total_cost or 0) + cost
+    conversation.last_message_at = now
+    if not conversation.title:
+        conversation.title = _title_from(content)
+
+    await session.commit()
+    await session.refresh(user_message)
+    await session.refresh(assistant_message)
+
+    return {
+        "user_message": user_message,
+        "assistant_message": assistant_message,
+        "usage": {
+            "tokens_in": result.tokens_in,
+            "tokens_out": result.tokens_out,
+            "total_tokens": result.tokens_in + result.tokens_out,
+            "cost": float(cost),
+            "currency": "USD",
+            "latency_ms": result.latency_ms,
+            "model_name": result.model,
+            "estimated": result.estimated,
+        },
+    }
