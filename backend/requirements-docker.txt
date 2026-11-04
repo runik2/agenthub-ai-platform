@@ -1,0 +1,4 @@
+# Extra dependencies for APP_MODE=docker. Not installed in local mode.
+asyncpg==0.30.0
+redis==6.4.0
+arq==0.26.3
