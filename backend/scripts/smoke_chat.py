@@ -44,7 +44,10 @@ def main() -> int:
 
         providers = client.get("/api/v1/providers", headers=headers).json()
         for provider in providers["items"]:
-            print(f"provider: {provider['name']} kind={provider['kind']} status={provider['last_check_status']}")
+            print(
+                f"provider: {provider['name']} kind={provider['kind']} "
+                f"status={provider['last_check_status']}"
+            )
 
         conversation = client.post(
             "/api/v1/conversations", headers=headers, json={"agent_id": agent["id"]}

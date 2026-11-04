@@ -11,6 +11,7 @@ import { AlertTriangle, CheckCircle2, Info, X } from "lucide-react";
 
 import { Button } from "./ui";
 import { cn } from "../lib/utils";
+import { useI18n } from "../i18n";
 
 /* ---------------------------------- modal --------------------------------- */
 
@@ -31,6 +32,7 @@ export function Modal({
   footer?: ReactNode;
   wide?: boolean;
 }) {
+  const { t } = useI18n();
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
@@ -65,7 +67,7 @@ export function Modal({
           <button
             type="button"
             onClick={onClose}
-            aria-label="close"
+            aria-label={t("common.close")}
             className="rounded-lg p-1 text-muted hover:bg-raised hover:text-ink"
           >
             <X size={16} />

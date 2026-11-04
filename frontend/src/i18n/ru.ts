@@ -4,6 +4,7 @@ export const ru = {
     tagline: "Платформа управления ИИ-агентами",
   },
   common: {
+    localMode: "локальный режим",
     save: "Сохранить",
     saving: "Сохраняем…",
     cancel: "Отмена",

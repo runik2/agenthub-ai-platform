@@ -70,7 +70,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </span>
         <div className="min-w-0">
           <p className="truncate text-[13px] font-semibold tracking-tight text-ink">AgentHub</p>
-          <p className="truncate text-[10px] uppercase tracking-wider text-muted">AI control plane</p>
+          <p className="truncate text-[10px] uppercase tracking-wider text-muted">{t("app.tagline")}</p>
         </div>
         <button
           type="button"
@@ -153,7 +153,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <LogOut size={14} />
           </button>
         </div>
-        <p className="px-1 text-[10px] text-muted/70">v0.1.0 · local mode</p>
+        <p className="px-1 text-[10px] text-muted/70">v0.1.0 · {t("common.localMode")}</p>
       </div>
     </div>
   );

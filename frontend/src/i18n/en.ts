@@ -6,6 +6,7 @@ export const en: Dict = {
     tagline: "AI agent management platform",
   },
   common: {
+    localMode: "local mode",
     save: "Save",
     saving: "Saving…",
     cancel: "Cancel",

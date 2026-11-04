@@ -8,6 +8,7 @@ import {
 } from "react";
 
 import { cn } from "../lib/utils";
+import { useI18n } from "../i18n";
 
 /* --------------------------------- buttons -------------------------------- */
 
@@ -172,10 +173,11 @@ export function Badge({
 /* -------------------------------- feedback -------------------------------- */
 
 export function Spinner({ size = 16 }: { size?: number }) {
+  const { t } = useI18n();
   return (
     <span
       role="status"
-      aria-label="loading"
+      aria-label={t("common.loading")}
       className="inline-block animate-spin rounded-full border-2 border-current border-t-transparent align-[-2px]"
       style={{ width: size, height: size }}
     />
