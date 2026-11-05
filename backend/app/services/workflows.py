@@ -14,7 +14,7 @@ from app.services import llm
 from app.services.pricing import compute_cost
 
 
-async def _call_integration(method: str, url: str, content: str, step: dict) -> str:
+async def _call_integration(method: str, url: str, content: str, step: dict) -> tuple[str, int]:
     """Call an allowlisted integration with bounded timeout and retries."""
     retries = min(max(int(step.get("retries", 0) or 0), 0), 3)
     timeout_seconds = min(max(float(step.get("timeout_seconds", 15) or 15), 1), 120)
@@ -25,7 +25,7 @@ async def _call_integration(method: str, url: str, content: str, step: dict) -> 
                 response = await client.request(method, url, content=content)
             if response.status_code >= 400:
                 raise ValueError(f"integration returned HTTP {response.status_code}")
-            return response.text[:20_000]
+            return response.text[:20_000], response.status_code
         except (httpx.HTTPError, ValueError) as exc:
             last_error = exc
             if attempt < retries:
@@ -116,7 +116,10 @@ async def _execute_steps(
                     integration_started = time.perf_counter()
                     request_preview = value[:500]
                     try:
-                        value = await _call_integration(tool_config.method, url, value, step)
+                        integration_value, integration_status = await _call_integration(
+                            tool_config.method, url, value, step
+                        )
+                        value = integration_value
                     except Exception as exc:
                         if session is not None:
                             session.add(
@@ -142,7 +145,7 @@ async def _execute_steps(
                                 method=tool_config.method,
                                 url=url,
                                 status="ok",
-                                status_code=200,
+                                status_code=integration_status,
                                 latency_ms=round((time.perf_counter() - integration_started) * 1000),
                                 request_preview=request_preview,
                                 response_preview=value[:500],
