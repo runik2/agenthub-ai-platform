@@ -5,7 +5,7 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 
-import { clearToken, getToken, request, setToken } from "./client";
+import { clearRefreshToken, clearToken, getToken, request, setRefreshToken, setToken } from "./client";
 import type {
   Agent,
   AgentPayload,
@@ -51,6 +51,7 @@ export function useLogin() {
       request<TokenResponse>("/auth/login", { method: "POST", body: payload }),
     onSuccess: (data) => {
       setToken(data.access_token);
+      if (data.refresh_token) setRefreshToken(data.refresh_token);
       queryClient.setQueryData(["me"], data.user);
       queryClient.invalidateQueries();
     },
@@ -64,6 +65,7 @@ export function useSetupAdmin() {
       request<TokenResponse>("/auth/setup", { method: "POST", body: payload }),
     onSuccess: (data) => {
       setToken(data.access_token);
+      if (data.refresh_token) setRefreshToken(data.refresh_token);
       queryClient.setQueryData(["me"], data.user);
       queryClient.invalidateQueries({ queryKey: ["setup-status"] });
     },
@@ -82,6 +84,7 @@ export function useLogout() {
     },
     onSettled: () => {
       clearToken();
+      clearRefreshToken();
       queryClient.clear();
     },
   });

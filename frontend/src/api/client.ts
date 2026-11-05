@@ -1,5 +1,6 @@
 export const API_BASE = "/api/v1";
 const TOKEN_KEY = "agenthub.token";
+const REFRESH_KEY = "agenthub.refresh";
 
 export function getToken(): string | null {
   return window.localStorage.getItem(TOKEN_KEY);
@@ -11,6 +12,14 @@ export function setToken(token: string): void {
 
 export function clearToken(): void {
   window.localStorage.removeItem(TOKEN_KEY);
+}
+
+export function setRefreshToken(token: string): void {
+  window.localStorage.setItem(REFRESH_KEY, token);
+}
+
+export function clearRefreshToken(): void {
+  window.localStorage.removeItem(REFRESH_KEY);
 }
 
 export class ApiError extends Error {

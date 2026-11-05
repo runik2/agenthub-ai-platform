@@ -36,6 +36,17 @@ class User(TimestampMixin, Base):
     agents: Mapped[list[Agent]] = relationship(back_populates="owner")
 
 
+class RefreshSession(TimestampMixin, Base):
+    __tablename__ = "refresh_sessions"
+
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    ip_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
 class LLMProvider(TimestampMixin, Base):
     __tablename__ = "llm_providers"
 

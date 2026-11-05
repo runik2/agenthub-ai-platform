@@ -24,6 +24,7 @@ async def test_login_and_me(client: httpx.AsyncClient) -> None:
     )
     assert login.status_code == 200
     token = login.json()["access_token"]
+    refresh_token = login.json()["refresh_token"]
     assert login.json()["token_type"] == "bearer"
 
     me = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
@@ -31,6 +32,26 @@ async def test_login_and_me(client: httpx.AsyncClient) -> None:
     assert me.json()["email"] == "admin@test.local"
     assert me.json()["role"] == "admin"
     assert "hashed_password" not in me.json()
+
+    refreshed = await client.post("/api/v1/auth/refresh", json={"refresh_token": refresh_token})
+    assert refreshed.status_code == 200
+    assert refreshed.json()["access_token"]
+    reused = await client.post("/api/v1/auth/refresh", json={"refresh_token": refresh_token})
+    assert reused.status_code == 401
+
+
+async def test_logout_all_revokes_refresh_sessions(client: httpx.AsyncClient) -> None:
+    login = await client.post(
+        "/api/v1/auth/login", json={"email": "admin@test.local", "password": "admin12345"}
+    )
+    token = login.json()["access_token"]
+    refresh_token = login.json()["refresh_token"]
+    response = await client.post(
+        "/api/v1/auth/logout-all", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert response.status_code == 200
+    revoked = await client.post("/api/v1/auth/refresh", json={"refresh_token": refresh_token})
+    assert revoked.status_code == 401
 
 
 async def test_login_with_wrong_password(client: httpx.AsyncClient) -> None:

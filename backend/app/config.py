@@ -26,7 +26,8 @@ class Settings(BaseSettings):
 
     jwt_secret: str = "dev-only-insecure-secret-change-me"
     jwt_algorithm: str = "HS256"
-    access_token_ttl_minutes: int = 720
+    access_token_ttl_minutes: int = 30
+    refresh_token_ttl_days: int = 30
 
     secret_encryption_key: str = ""
 
