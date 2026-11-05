@@ -104,7 +104,11 @@ def create_app() -> FastAPI:
         started = time.perf_counter()
         rate_limit = None
         if request.method == "POST":
-            if request.url.path == "/api/v1/auth/login" or request.url.path == "/api/v1/auth/refresh":
+            if request.url.path in {
+                "/api/v1/auth/login",
+                "/api/v1/auth/refresh",
+                "/api/v1/auth/password-reset/request",
+            }:
                 rate_limit = ("auth", settings.auth_rate_limit_per_minute)
             elif request.url.path.startswith("/api/v1/webhooks/incoming/"):
                 rate_limit = ("webhook", settings.webhook_rate_limit_per_minute)

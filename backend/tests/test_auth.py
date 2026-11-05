@@ -88,6 +88,39 @@ async def test_password_change_revokes_sessions(client: httpx.AsyncClient) -> No
     assert relogin.status_code == 200
 
 
+async def test_password_reset_is_one_time_and_revokes_sessions(client: httpx.AsyncClient) -> None:
+    login = await client.post(
+        "/api/v1/auth/login", json={"email": "admin@test.local", "password": "admin12345"}
+    )
+    old_refresh = login.json()["refresh_token"]
+    requested = await client.post(
+        "/api/v1/auth/password-reset/request", json={"email": "admin@test.local"}
+    )
+    assert requested.status_code == 200
+    token = requested.json()["dev_token"]
+    confirmed = await client.post(
+        "/api/v1/auth/password-reset/confirm",
+        json={"token": token, "new_password": "reset-pass123"},
+    )
+    assert confirmed.status_code == 200
+    assert (await client.post("/api/v1/auth/refresh", json={"refresh_token": old_refresh})).status_code == 401
+    reused = await client.post(
+        "/api/v1/auth/password-reset/confirm",
+        json={"token": token, "new_password": "another-pass123"},
+    )
+    assert reused.status_code == 400
+    relogin = await client.post(
+        "/api/v1/auth/login", json={"email": "admin@test.local", "password": "reset-pass123"}
+    )
+    assert relogin.status_code == 200
+    restored = await client.post(
+        "/api/v1/auth/password",
+        headers={"Authorization": f"Bearer {relogin.json()['access_token']}"},
+        json={"current_password": "reset-pass123", "new_password": "admin12345"},
+    )
+    assert restored.status_code == 200
+
+
 async def test_two_factor_setup_and_login_gate(client: httpx.AsyncClient) -> None:
     admin = await client.post(
         "/api/v1/auth/login", json={"email": "admin@test.local", "password": "admin12345"}

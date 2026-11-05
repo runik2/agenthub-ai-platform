@@ -2,8 +2,10 @@ import { type FormEvent, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
 
 import { useLogin, useSetupStatus } from "../api/hooks";
+import { request } from "../api/client";
 import { LanguageToggle } from "../components/LanguageToggle";
 import { Button, Field, Input } from "../components/ui";
 import { useI18n } from "../i18n";
@@ -44,6 +46,18 @@ export function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [otpCode, setOtpCode] = useState("");
+  const [resetMode, setResetMode] = useState(false);
+  const [resetToken, setResetToken] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [resetNotice, setResetNotice] = useState("");
+  const resetRequest = useMutation({
+    mutationFn: () => request<{ status: string; dev_token?: string }>("/auth/password-reset/request", { method: "POST", body: { email } }),
+    onSuccess: data => { setResetNotice(data.dev_token ? `${data.status}. Demo token: ${data.dev_token}` : data.status); if (data.dev_token) setResetToken(data.dev_token); },
+  });
+  const resetConfirm = useMutation({
+    mutationFn: () => request<{ status: string }>("/auth/password-reset/confirm", { method: "POST", body: { token: resetToken, new_password: newPassword } }),
+    onSuccess: () => { setResetNotice(t("login.resetDone")); setResetMode(false); setResetToken(""); setNewPassword(""); },
+  });
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -55,10 +69,16 @@ export function LoginPage() {
 
   return (
     <AuthLayout>
-      <h1 className="text-base font-semibold text-ink">{t("login.title")}</h1>
-      <p className="mt-1 text-[13px] leading-relaxed text-muted">{t("login.subtitle")}</p>
+      <h1 className="text-base font-semibold text-ink">{resetMode ? t("login.resetTitle") : t("login.title")}</h1>
+      <p className="mt-1 text-[13px] leading-relaxed text-muted">{resetMode ? t("login.resetSubtitle") : t("login.subtitle")}</p>
 
-      <form className="mt-4 space-y-3" onSubmit={submit}>
+      {resetMode ? <form className="mt-4 space-y-3" onSubmit={event => { event.preventDefault(); if (!resetToken) resetRequest.mutate(); else resetConfirm.mutate(); }}>
+        <Field label={t("login.email")}><Input type="email" required value={email} onChange={event => setEmail(event.target.value)} placeholder="admin@agenthub.local" /></Field>
+        {resetToken ? <><Field label={t("login.resetToken")}><Input required value={resetToken} onChange={event => setResetToken(event.target.value)} /></Field><Field label={t("login.newPassword")}><Input type="password" minLength={8} required value={newPassword} onChange={event => setNewPassword(event.target.value)} /></Field></> : null}
+        {resetNotice ? <p className="break-all rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-[12px] text-success">{resetNotice}</p> : null}
+        <Button type="submit" className="w-full" loading={resetRequest.isPending || resetConfirm.isPending}>{resetToken ? t("login.resetConfirm") : t("login.resetSend")}</Button>
+        <button type="button" className="w-full text-center text-[12px] text-accent hover:underline" onClick={() => { setResetMode(false); setResetNotice(""); }}>{t("login.backToLogin")}</button>
+      </form> : <form className="mt-4 space-y-3" onSubmit={submit}>
         <Field label={t("login.email")}>
           <Input
             type="email"
@@ -95,6 +115,8 @@ export function LoginPage() {
           />
         </Field>
 
+        <button type="button" className="text-[12px] text-accent hover:underline" onClick={() => setResetMode(true)}>{t("login.resetLink")}</button>
+
         {login.error ? (
           <p className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-[12px] text-danger">
             {t(`errors.${errorCode(login.error)}`)}
@@ -105,7 +127,7 @@ export function LoginPage() {
           {login.isPending ? t("login.submitting") : t("login.submit")}
           {!login.isPending ? <ArrowRight size={15} /> : null}
         </Button>
-      </form>
+      </form>}
 
       <p className="mt-3 text-[11px] leading-relaxed text-muted">{t("login.demoHint")}</p>
 

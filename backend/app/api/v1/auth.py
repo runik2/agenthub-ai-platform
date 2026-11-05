@@ -18,11 +18,13 @@ from app.core.security import (
     verify_password,
     verify_totp,
 )
-from app.db.models import RefreshSession, User
+from app.db.models import PasswordResetToken, RefreshSession, User
 from app.db.session import get_session
 from app.schemas.auth import (
     LoginRequest,
     PasswordChange,
+    PasswordResetConfirm,
+    PasswordResetRequest,
     RefreshRequest,
     SetupRequest,
     SetupStatus,
@@ -212,6 +214,69 @@ async def change_password(
     await write_audit(session, request, user.id, "auth.password_changed", "user", user.id)
     await session.commit()
     return {"status": "ok", "revoked": str(len(rows))}
+
+
+@router.post("/password-reset/request")
+async def request_password_reset(
+    payload: PasswordResetRequest, request: Request, session: AsyncSession = Depends(get_session)
+) -> dict[str, str | None]:
+    """Create a one-time reset token without revealing whether the email exists."""
+    user = await session.scalar(select(User).where(User.email == payload.email))
+    response: dict[str, str | None] = {
+        "status": "If the account exists, reset instructions will be sent"
+    }
+    if user and user.is_active:
+        raw = token_urlsafe(48)
+        session.add(
+            PasswordResetToken(
+                user_id=user.id,
+                token_hash=token_hash(raw),
+                expires_at=datetime.now(UTC)
+                + timedelta(minutes=get_settings().password_reset_ttl_minutes),
+            )
+        )
+        await write_audit(session, request, user.id, "auth.password_reset_requested", "user", user.id)
+        # Local mode exposes a token for the demo UI; production should deliver it by email.
+        if get_settings().app_mode == "local":
+            response["dev_token"] = raw
+    await session.commit()
+    return response
+
+
+@router.post("/password-reset/confirm")
+async def confirm_password_reset(
+    payload: PasswordResetConfirm, request: Request, session: AsyncSession = Depends(get_session)
+) -> dict[str, str]:
+    record = await session.scalar(
+        select(PasswordResetToken).where(PasswordResetToken.token_hash == token_hash(payload.token))
+    )
+    now = datetime.now(UTC)
+    expires_at = (
+        record.expires_at.replace(tzinfo=UTC)
+        if record and record.expires_at.tzinfo is None
+        else record.expires_at
+        if record
+        else None
+    )
+    if not record or record.used_at or not expires_at or expires_at <= now:
+        raise AppError("INVALID_RESET_TOKEN", "Reset token is invalid or expired", 400)
+    user = await session.get(User, record.user_id)
+    if not user or not user.is_active:
+        raise AppError("INVALID_RESET_TOKEN", "Reset token is invalid or expired", 400)
+    user.hashed_password = hash_password(payload.new_password)
+    record.used_at = now
+    sessions = (
+        await session.scalars(
+            select(RefreshSession).where(
+                RefreshSession.user_id == user.id, RefreshSession.revoked_at.is_(None)
+            )
+        )
+    ).all()
+    for session_row in sessions:
+        session_row.revoked_at = now
+    await write_audit(session, request, user.id, "auth.password_reset_completed", "user", user.id)
+    await session.commit()
+    return {"status": "ok"}
 
 
 @router.get("/me", response_model=UserOut)

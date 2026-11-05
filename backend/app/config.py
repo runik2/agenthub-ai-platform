@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_ttl_minutes: int = 30
     refresh_token_ttl_days: int = 30
+    password_reset_ttl_minutes: int = 30
 
     secret_encryption_key: str = ""
 
