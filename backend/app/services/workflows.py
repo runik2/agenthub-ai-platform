@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
-from urllib.parse import urlparse
 
+import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError
-from app.db.models import Agent, LLMProvider, Workflow
+from app.db.models import Agent, IntegrationTool, LLMProvider, Workflow
 from app.services import llm
 
 
@@ -29,13 +29,19 @@ async def execute_workflow(session: AsyncSession, workflow: Workflow, initial: s
                 data = json.loads(value)
                 value = str(data.get(step.get("path", ""), ""))
             elif tool == "http_get":
-                parsed = urlparse(step.get("url", ""))
-                allowed = step.get("allowlist", [])
-                if parsed.scheme != "https" or parsed.hostname not in allowed:
-                    raise ValueError("http_get URL is not allowlisted")
-                raise ValueError("http_get requires an approved HTTP client")
+                raise ValueError("http_get is deprecated; register an allowlisted integration tool")
             else:
-                raise ValueError(f"tool is not allowed: {tool}")
+                tool_config = await session.get(IntegrationTool, step.get("tool_id"))
+                if not tool_config or tool_config.owner_id != workflow.owner_id:
+                    raise AppError("TOOL_NOT_FOUND", "Workflow tool is not owned by workflow owner", 404)
+                if not tool_config.is_active:
+                    raise AppError("TOOL_INACTIVE", "Workflow tool is disabled", 409)
+                url = f"{tool_config.base_url.rstrip('/')}/{tool_config.allowed_path.lstrip('/')}"
+                async with httpx.AsyncClient(timeout=15, follow_redirects=False) as client:
+                    response = await client.request(tool_config.method, url, content=value)
+                if response.status_code >= 400:
+                    raise ValueError(f"integration returned HTTP {response.status_code}")
+                value = response.text[:20_000]
             continue
         agent = await session.get(Agent, step.get("agent_id")) if step.get("agent_id") else None
         if step.get("agent_id") and (not agent or agent.owner_id != workflow.owner_id):

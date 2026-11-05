@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
-from app.db.models import Agent, Task, TaskRun, User, Workflow
+from app.db.models import Agent, IntegrationTool, Task, TaskRun, User, Workflow
 from app.db.session import get_session
 from app.queue.runtime import get_queue
 from app.schemas.tasks import TaskCreate, TaskOut
@@ -36,11 +36,13 @@ async def create_task(
         select(Agent.id).where(Agent.id == values["agent_id"], Agent.owner_id == user.id)
     ):
         from app.core.errors import AppError
+
         raise AppError("NOT_FOUND", "Agent not found", 404)
     if values["workflow_id"] and not await session.scalar(
         select(Workflow.id).where(Workflow.id == values["workflow_id"], Workflow.owner_id == user.id)
     ):
         from app.core.errors import AppError
+
         raise AppError("NOT_FOUND", "Workflow not found", 404)
     workflow_requires_approval = False
     if values["workflow_id"]:
@@ -48,6 +50,18 @@ async def create_task(
         workflow_requires_approval = bool(
             workflow and any(step.get("type") == "approval" for step in workflow.steps or [])
         )
+        if workflow and not workflow_requires_approval:
+            tool_ids = [step.get("tool_id") for step in workflow.steps or [] if step.get("tool_id")]
+            if tool_ids:
+                workflow_requires_approval = bool(
+                    await session.scalar(
+                        select(IntegrationTool.id).where(
+                            IntegrationTool.id.in_(tool_ids),
+                            IntegrationTool.owner_id == user.id,
+                            IntegrationTool.requires_approval.is_(True),
+                        )
+                    )
+                )
     task = Task(owner_id=user.id, requires_approval=workflow_requires_approval, **values)
     if workflow_requires_approval:
         task.status = "waiting_approval"
@@ -107,9 +121,11 @@ async def approve_task(
     task = await session.scalar(select(Task).where(Task.id == task_id, Task.owner_id == user.id))
     if not task:
         from app.core.errors import AppError
+
         raise AppError("NOT_FOUND", "Task not found", 404)
     if task.status != "waiting_approval":
         from app.core.errors import AppError
+
         raise AppError("APPROVAL_NOT_PENDING", "Task is not waiting for approval", 409)
     task.status, task.approved_at, task.approved_by_id = "pending", datetime.now(UTC), user.id
     await session.commit()
@@ -129,9 +145,11 @@ async def reject_task(
     task = await session.scalar(select(Task).where(Task.id == task_id, Task.owner_id == user.id))
     if not task:
         from app.core.errors import AppError
+
         raise AppError("NOT_FOUND", "Task not found", 404)
     if task.status != "waiting_approval":
         from app.core.errors import AppError
+
         raise AppError("APPROVAL_NOT_PENDING", "Task is not waiting for approval", 409)
     task.status, task.error = "rejected", "Rejected by operator"
     await session.commit()

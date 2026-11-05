@@ -34,6 +34,7 @@ class Step(BaseModel):
     agent_id: str | None = None
     prompt: str = ""
     tool: str | None = None
+    tool_id: str | None = None
     template: str | None = None
     path: str | None = None
     allowlist: list[str] = Field(default_factory=list)
