@@ -28,6 +28,10 @@ class TaskOut(BaseModel):
     created_at: datetime
 
 
+class TaskApprovalEdit(BaseModel):
+    input: str = Field(min_length=0, max_length=50_000)
+
+
 class Step(BaseModel):
     id: str
     type: str = "agent"  # agent | tool | condition | approval

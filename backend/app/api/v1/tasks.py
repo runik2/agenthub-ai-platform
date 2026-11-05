@@ -2,15 +2,16 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, require_roles, workspace_owner_id
+from app.api.deps import get_current_user, require_roles, workspace_owner_id, write_audit
+from app.core.errors import AppError
 from app.db.models import Agent, IntegrationTool, Task, TaskRun, User, Workflow
 from app.db.session import get_session
 from app.queue.runtime import get_queue
-from app.schemas.tasks import TaskCreate, TaskOut
+from app.schemas.tasks import TaskApprovalEdit, TaskCreate, TaskOut
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -144,6 +145,42 @@ async def approve_task(
 
         raise AppError("APPROVAL_NOT_PENDING", "Task is not waiting for approval", 409)
     task.status, task.approved_at, task.approved_by_id = "pending", datetime.now(UTC), user.id
+    await session.commit()
+    try:
+        await get_queue().enqueue("execute_task", {"task_id": task.id})
+    except Exception as exc:
+        task.status, task.error = "failed", f"queue enqueue failed: {exc}"
+        await session.commit()
+    await session.refresh(task)
+    return task
+
+
+@router.post("/{task_id}/approve-and-run", response_model=TaskOut)
+async def approve_and_run_task(
+    task_id: str,
+    payload: TaskApprovalEdit,
+    request: Request,
+    user: User = Depends(require_roles("admin", "manager", "operator")),
+    session: AsyncSession = Depends(get_session),
+):
+    task = await session.scalar(
+        select(Task).where(Task.id == task_id, Task.owner_id == workspace_owner_id(user))
+    )
+    if not task:
+        raise AppError("NOT_FOUND", "Task not found", 404)
+    if task.status != "waiting_approval":
+        raise AppError("APPROVAL_NOT_PENDING", "Task is not waiting for approval", 409)
+    task.input = payload.input
+    task.status, task.approved_at, task.approved_by_id = "pending", datetime.now(UTC), user.id
+    await write_audit(
+        session,
+        request,
+        user.id,
+        "task.approved_with_edit",
+        "task",
+        task.id,
+        {"input_length": len(payload.input)},
+    )
     await session.commit()
     try:
         await get_queue().enqueue("execute_task", {"task_id": task.id})
