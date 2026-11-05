@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import httpx
+import pytest
+
+from app.db.models import LLMProvider
+from app.services import embeddings
 
 
 async def test_knowledge_is_chunked_and_searchable(
@@ -49,3 +53,27 @@ async def test_document_reindex_creates_version_snapshot(
     versions = await client.get(f"/api/v1/knowledge/documents/{document_id}/versions", headers=auth_headers)
     assert versions.status_code == 200
     assert [item["version"] for item in versions.json()] == [2, 1]
+
+
+@pytest.mark.asyncio
+async def test_openai_compatible_embeddings_are_parsed() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/embeddings"
+        return httpx.Response(
+            200,
+            json={"data": [{"embedding": [1.0, 0.0]}, {"embedding": [0.0, 1.0]}]},
+        )
+
+    embeddings.set_transport(httpx.MockTransport(handler))
+    try:
+        vectors = await embeddings.embed(
+            LLMProvider(
+                kind="openai_compatible",
+                base_url="https://models.example.test",
+                default_model="embed-v1",
+            ),
+            ["first", "second"],
+        )
+    finally:
+        embeddings.set_transport(None)
+    assert vectors == [[1.0, 0.0], [0.0, 1.0]]

@@ -274,6 +274,7 @@ class KnowledgeChunk(TimestampMixin, Base):
     )
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[list[float] | None] = mapped_column(JSON, nullable=True)
 
 
 class EvaluationCase(TimestampMixin, Base):

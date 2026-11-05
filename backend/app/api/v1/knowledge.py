@@ -1,3 +1,5 @@
+import logging
+import math
 from io import BytesIO
 from pathlib import Path
 
@@ -8,11 +10,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, workspace_owner_id
 from app.core.errors import AppError
-from app.db.models import Agent, KnowledgeChunk, KnowledgeDocument, KnowledgeDocumentVersion, User
+from app.db.models import (
+    Agent,
+    KnowledgeChunk,
+    KnowledgeDocument,
+    KnowledgeDocumentVersion,
+    LLMProvider,
+    User,
+)
 from app.db.session import get_session
 from app.schemas.knowledge import DocumentCreate, DocumentOut, DocumentVersionOut, SearchResult
+from app.services import embeddings
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
+logger = logging.getLogger("agenthub.knowledge")
 CHUNK_SIZE = 900
 CHUNK_OVERLAP = 120
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -32,11 +43,29 @@ async def owned_agent(agent_id: str | None, user: User, session: AsyncSession) -
         raise AppError("AGENT_NOT_FOUND", "Agent not found", 404)
 
 
+async def chunk_embeddings(
+    agent_id: str | None, chunks: list[str], session: AsyncSession
+) -> list[list[float] | None]:
+    if not agent_id:
+        return [None] * len(chunks)
+    agent = await session.get(Agent, agent_id)
+    provider = await session.get(LLMProvider, agent.provider_id) if agent and agent.provider_id else None
+    if not provider or not provider.is_active:
+        return [None] * len(chunks)
+    try:
+        vectors = await embeddings.embed(provider, chunks)
+        return vectors
+    except embeddings.EmbeddingError as exc:
+        logger.warning("knowledge embeddings unavailable; using keyword fallback: %s", exc)
+        return [None] * len(chunks)
+
+
 async def index_document(
     title: str, content: str, agent_id: str | None, user: User, session: AsyncSession
 ) -> KnowledgeDocument:
     await owned_agent(agent_id, user, session)
     chunks = split_chunks(content)
+    vectors = await chunk_embeddings(agent_id, chunks, session)
     document = KnowledgeDocument(
         owner_id=workspace_owner_id(user),
         agent_id=agent_id,
@@ -57,6 +86,7 @@ async def index_document(
                 agent_id=agent_id,
                 chunk_index=index,
                 content=chunk,
+                embedding=vectors[index],
             )
         )
     return document
@@ -208,6 +238,7 @@ async def reindex_document(
     if not document:
         raise AppError("DOCUMENT_NOT_FOUND", "Knowledge document not found", 404)
     chunks = split_chunks(document.content)
+    vectors = await chunk_embeddings(document.agent_id, chunks, session)
     document.version += 1
     document.chunk_count = len(chunks)
     await session.execute(delete(KnowledgeChunk).where(KnowledgeChunk.document_id == document.id))
@@ -227,6 +258,7 @@ async def reindex_document(
                 agent_id=document.agent_id,
                 chunk_index=index,
                 content=chunk,
+                embedding=vectors[index],
             )
         )
     await session.commit()
@@ -256,9 +288,24 @@ async def search_knowledge(
             )
         ).all()
     }
+    query_vector: list[float] | None = None
+    if agent_id:
+        agent = await session.get(Agent, agent_id)
+        provider = await session.get(LLMProvider, agent.provider_id) if agent and agent.provider_id else None
+        if provider and provider.is_active and any(row.embedding for row in rows):
+            try:
+                query_vector = (await embeddings.embed(provider, [q]))[0]
+            except embeddings.EmbeddingError as exc:
+                logger.warning("semantic search unavailable; using keyword fallback: %s", exc)
     results = []
     for row in rows:
-        score = sum(word in row.content.lower() for word in words)
+        if query_vector and row.embedding:
+            dot = sum(a * b for a, b in zip(query_vector, row.embedding, strict=False))
+            norm_query = math.sqrt(sum(value * value for value in query_vector))
+            norm_row = math.sqrt(sum(value * value for value in row.embedding))
+            score = round(dot / (norm_query * norm_row), 6) if norm_query and norm_row else 0
+        else:
+            score = sum(word in row.content.lower() for word in words)
         if score:
             results.append(
                 SearchResult(

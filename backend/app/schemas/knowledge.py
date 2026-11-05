@@ -26,7 +26,7 @@ class SearchResult(BaseModel):
     title: str
     chunk_index: int
     content: str
-    score: int
+    score: float
 
 
 class DocumentVersionOut(BaseModel):

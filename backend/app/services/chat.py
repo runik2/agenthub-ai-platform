@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -19,7 +20,7 @@ from app.db.models import (
     Message,
     User,
 )
-from app.services import llm
+from app.services import embeddings, llm
 from app.services.pricing import compute_cost
 
 HISTORY_LIMIT = 20
@@ -106,20 +107,34 @@ async def send_message(
     ).all()
     words = [word.lower() for word in content.split() if len(word) > 2][:8]
     knowledge: list[tuple[KnowledgeChunk, str]] = []
-    if words:
+    chunk_filters = [
+        KnowledgeChunk.owner_id == workspace_owner_id(user),
+        or_(KnowledgeChunk.agent_id == agent.id, KnowledgeChunk.agent_id.is_(None)),
+    ]
+    chunk_rows: list[KnowledgeChunk] = []
+    if provider.is_active:
+        candidate_rows = list(
+            (await session.scalars(select(KnowledgeChunk).where(*chunk_filters).limit(100))).all()
+        )
+        if any(row.embedding for row in candidate_rows):
+            try:
+                query_vector = (await embeddings.embed(provider, [content]))[0]
+                norm_query = math.sqrt(sum(value * value for value in query_vector))
+                ranked = []
+                for row in candidate_rows:
+                    if not row.embedding:
+                        continue
+                    norm_row = math.sqrt(sum(value * value for value in row.embedding))
+                    score = sum(a * b for a, b in zip(query_vector, row.embedding, strict=False))
+                    if norm_query and norm_row:
+                        ranked.append((score / (norm_query * norm_row), row))
+                chunk_rows = [row for _, row in sorted(ranked, key=lambda item: item[0], reverse=True)[:6]]
+            except embeddings.EmbeddingError:
+                chunk_rows = []
+    if not chunk_rows and words:
         matches = or_(*(KnowledgeChunk.content.ilike(f"%{word}%") for word in words))
         chunk_rows = list(
-            (
-                await session.scalars(
-                    select(KnowledgeChunk)
-                    .where(
-                        KnowledgeChunk.owner_id == workspace_owner_id(user),
-                        or_(KnowledgeChunk.agent_id == agent.id, KnowledgeChunk.agent_id.is_(None)),
-                        matches,
-                    )
-                    .limit(6)
-                )
-            ).all()
+            (await session.scalars(select(KnowledgeChunk).where(*chunk_filters, matches).limit(6))).all()
         )
         document_ids = {chunk.document_id for chunk in chunk_rows}
         titles = (
