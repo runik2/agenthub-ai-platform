@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, require_roles
+from app.api.deps import get_current_user, require_roles, workspace_owner_id
 from app.core.errors import AppError
 from app.db.models import IntegrationTool, User
 from app.db.session import get_session
@@ -29,7 +29,9 @@ def validate_target(base_url: str, allowed_path: str) -> None:
 
 async def owned_tool(tool_id: str, user: User, session: AsyncSession) -> IntegrationTool:
     tool = await session.scalar(
-        select(IntegrationTool).where(IntegrationTool.id == tool_id, IntegrationTool.owner_id == user.id)
+        select(IntegrationTool).where(
+            IntegrationTool.id == tool_id, IntegrationTool.owner_id == workspace_owner_id(user)
+        )
     )
     if not tool:
         raise AppError("TOOL_NOT_FOUND", "Tool not found", 404)
@@ -40,7 +42,7 @@ async def owned_tool(tool_id: str, user: User, session: AsyncSession) -> Integra
 async def list_tools(user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)):
     stmt = (
         select(IntegrationTool)
-        .where(IntegrationTool.owner_id == user.id)
+        .where(IntegrationTool.owner_id == workspace_owner_id(user))
         .order_by(IntegrationTool.created_at.desc())
     )
     return list((await session.scalars(stmt)).all())
@@ -53,7 +55,7 @@ async def create_tool(
     session: AsyncSession = Depends(get_session),
 ):
     validate_target(payload.base_url, payload.allowed_path)
-    tool = IntegrationTool(owner_id=user.id, **payload.model_dump())
+    tool = IntegrationTool(owner_id=workspace_owner_id(user), **payload.model_dump())
     session.add(tool)
     await session.commit()
     await session.refresh(tool)

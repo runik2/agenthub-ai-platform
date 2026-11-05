@@ -3,7 +3,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import require_admin, write_audit
+from app.api.deps import require_admin, workspace_owner_id, write_audit
 from app.core.errors import AppError
 from app.core.security import hash_password
 from app.db.models import User
@@ -30,6 +30,7 @@ async def create_team_user(
         full_name=payload.full_name.strip(),
         hashed_password=hash_password(payload.password),
         role=payload.role,
+        workspace_id=workspace_owner_id(admin),
         is_active=True,
     )
     session.add(user)

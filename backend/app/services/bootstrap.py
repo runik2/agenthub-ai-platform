@@ -32,6 +32,8 @@ async def ensure_bootstrap_admin(session: AsyncSession) -> User | None:
         is_active=True,
     )
     session.add(admin)
+    await session.flush()
+    admin.workspace_id = admin.id
     await session.commit()
     await session.refresh(admin)
     logger.info("bootstrap administrator created: %s", admin.email)

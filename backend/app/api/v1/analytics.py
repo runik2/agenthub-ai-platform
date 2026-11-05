@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, workspace_owner_id
 from app.db.models import Agent, Conversation, LLMProvider, LLMUsage, Message, User
 from app.db.session import get_session
 
@@ -26,14 +26,16 @@ async def summary(
     from app.db.models import Schedule, Task, TaskRun, Workflow
 
     def stats(model):
-        return session.scalar(select(func.count(model.id)).where(model.owner_id == user.id))
+        return session.scalar(select(func.count(model.id)).where(model.owner_id == workspace_owner_id(user)))
 
     return {
         "tasks": await stats(Task),
         "workflows": await stats(Workflow),
         "schedules": await stats(Schedule),
         "task_runs": int(
-            await session.scalar(select(func.count(TaskRun.id)).join(Task).where(Task.owner_id == user.id))
+            await session.scalar(
+                select(func.count(TaskRun.id)).join(Task).where(Task.owner_id == workspace_owner_id(user))
+            )
             or 0
         ),
         "days": days,
@@ -68,7 +70,7 @@ async def overview(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     since = datetime.now(UTC) - timedelta(days=days)
-    agent_ids = select(Agent.id).where(Agent.owner_id == user.id)
+    agent_ids = select(Agent.id).where(Agent.owner_id == workspace_owner_id(user))
     usage_scope = (LLMUsage.agent_id.in_(agent_ids), LLMUsage.created_at >= since)
 
     totals_row = (
@@ -83,7 +85,8 @@ async def overview(
     ).one()
 
     agents_count = int(
-        await session.scalar(select(func.count(Agent.id)).where(Agent.owner_id == user.id)) or 0
+        await session.scalar(select(func.count(Agent.id)).where(Agent.owner_id == workspace_owner_id(user)))
+        or 0
     )
     conversations_count = int(
         await session.scalar(select(func.count(Conversation.id)).where(Conversation.user_id == user.id)) or 0
@@ -161,7 +164,7 @@ async def overview(
                 func.coalesce(func.sum(LLMUsage.cost), 0),
             )
             .outerjoin(LLMUsage, LLMUsage.provider_id == LLMProvider.id)
-            .where(LLMProvider.owner_id == user.id)
+            .where(LLMProvider.owner_id == workspace_owner_id(user))
             .group_by(
                 LLMProvider.id,
                 LLMProvider.name,
@@ -220,7 +223,7 @@ async def economics(
 ) -> dict:
     since = datetime.now(UTC) - timedelta(days=days)
     scope = (
-        LLMUsage.agent_id.in_(select(Agent.id).where(Agent.owner_id == user.id)),
+        LLMUsage.agent_id.in_(select(Agent.id).where(Agent.owner_id == workspace_owner_id(user))),
         LLMUsage.created_at >= since,
     )
     model_rows = (

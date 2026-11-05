@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, require_roles
+from app.api.deps import get_current_user, require_roles, workspace_owner_id
 from app.db.models import Agent, IntegrationTool, Task, TaskRun, User, Workflow
 from app.db.session import get_session
 from app.queue.runtime import get_queue
@@ -21,7 +21,7 @@ async def list_tasks(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    q = select(Task).where(Task.owner_id == user.id).order_by(Task.created_at.desc())
+    q = select(Task).where(Task.owner_id == workspace_owner_id(user)).order_by(Task.created_at.desc())
     if status:
         q = q.where(Task.status == status)
     return list((await session.scalars(q)).all())
@@ -35,13 +35,15 @@ async def create_task(
 ):
     values = payload.model_dump()
     if values["agent_id"] and not await session.scalar(
-        select(Agent.id).where(Agent.id == values["agent_id"], Agent.owner_id == user.id)
+        select(Agent.id).where(Agent.id == values["agent_id"], Agent.owner_id == workspace_owner_id(user))
     ):
         from app.core.errors import AppError
 
         raise AppError("NOT_FOUND", "Agent not found", 404)
     if values["workflow_id"] and not await session.scalar(
-        select(Workflow.id).where(Workflow.id == values["workflow_id"], Workflow.owner_id == user.id)
+        select(Workflow.id).where(
+            Workflow.id == values["workflow_id"], Workflow.owner_id == workspace_owner_id(user)
+        )
     ):
         from app.core.errors import AppError
 
@@ -59,12 +61,12 @@ async def create_task(
                     await session.scalar(
                         select(IntegrationTool.id).where(
                             IntegrationTool.id.in_(tool_ids),
-                            IntegrationTool.owner_id == user.id,
+                            IntegrationTool.owner_id == workspace_owner_id(user),
                             IntegrationTool.requires_approval.is_(True),
                         )
                     )
                 )
-    task = Task(owner_id=user.id, requires_approval=workflow_requires_approval, **values)
+    task = Task(owner_id=workspace_owner_id(user), requires_approval=workflow_requires_approval, **values)
     if workflow_requires_approval:
         task.status = "waiting_approval"
     session.add(task)
@@ -86,7 +88,9 @@ async def get_task(
     user: User = Depends(require_roles("admin", "manager", "operator")),
     session: AsyncSession = Depends(get_session),
 ):
-    task = await session.scalar(select(Task).where(Task.id == task_id, Task.owner_id == user.id))
+    task = await session.scalar(
+        select(Task).where(Task.id == task_id, Task.owner_id == workspace_owner_id(user))
+    )
     if not task:
         from app.core.errors import AppError
 
@@ -100,7 +104,9 @@ async def run_task(
     user: User = Depends(require_roles("admin", "manager", "operator")),
     session: AsyncSession = Depends(get_session),
 ):
-    task = await session.scalar(select(Task).where(Task.id == task_id, Task.owner_id == user.id))
+    task = await session.scalar(
+        select(Task).where(Task.id == task_id, Task.owner_id == workspace_owner_id(user))
+    )
     if not task:
         from app.core.errors import AppError
 
@@ -126,7 +132,9 @@ async def approve_task(
     user: User = Depends(require_roles("admin", "manager", "operator")),
     session: AsyncSession = Depends(get_session),
 ):
-    task = await session.scalar(select(Task).where(Task.id == task_id, Task.owner_id == user.id))
+    task = await session.scalar(
+        select(Task).where(Task.id == task_id, Task.owner_id == workspace_owner_id(user))
+    )
     if not task:
         from app.core.errors import AppError
 
@@ -152,7 +160,9 @@ async def reject_task(
     user: User = Depends(require_roles("admin", "manager", "operator")),
     session: AsyncSession = Depends(get_session),
 ):
-    task = await session.scalar(select(Task).where(Task.id == task_id, Task.owner_id == user.id))
+    task = await session.scalar(
+        select(Task).where(Task.id == task_id, Task.owner_id == workspace_owner_id(user))
+    )
     if not task:
         from app.core.errors import AppError
 
@@ -171,7 +181,9 @@ async def reject_task(
 async def task_runs(
     task_id: str, user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)
 ):
-    allowed = await session.scalar(select(Task.id).where(Task.id == task_id, Task.owner_id == user.id))
+    allowed = await session.scalar(
+        select(Task.id).where(Task.id == task_id, Task.owner_id == workspace_owner_id(user))
+    )
     if not allowed:
         from app.core.errors import AppError
 

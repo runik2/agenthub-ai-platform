@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, File, Query, UploadFile
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, workspace_owner_id
 from app.core.errors import AppError
 from app.db.models import Agent, KnowledgeChunk, KnowledgeDocument, User
 from app.db.session import get_session
@@ -27,7 +27,7 @@ def split_chunks(content: str) -> list[str]:
 
 async def owned_agent(agent_id: str | None, user: User, session: AsyncSession) -> None:
     if agent_id and not await session.scalar(
-        select(Agent.id).where(Agent.id == agent_id, Agent.owner_id == user.id)
+        select(Agent.id).where(Agent.id == agent_id, Agent.owner_id == workspace_owner_id(user))
     ):
         raise AppError("AGENT_NOT_FOUND", "Agent not found", 404)
 
@@ -38,7 +38,7 @@ async def index_document(
     await owned_agent(agent_id, user, session)
     chunks = split_chunks(content)
     document = KnowledgeDocument(
-        owner_id=user.id,
+        owner_id=workspace_owner_id(user),
         agent_id=agent_id,
         title=title,
         content=content,
@@ -50,7 +50,7 @@ async def index_document(
         session.add(
             KnowledgeChunk(
                 document_id=document.id,
-                owner_id=user.id,
+                owner_id=workspace_owner_id(user),
                 agent_id=agent_id,
                 chunk_index=index,
                 content=chunk,
@@ -67,7 +67,7 @@ async def list_documents(
         (
             await session.scalars(
                 select(KnowledgeDocument)
-                .where(KnowledgeDocument.owner_id == user.id)
+                .where(KnowledgeDocument.owner_id == workspace_owner_id(user))
                 .order_by(KnowledgeDocument.created_at.desc())
             )
         ).all()
@@ -159,7 +159,7 @@ async def delete_document(
 ):
     document = await session.scalar(
         select(KnowledgeDocument).where(
-            KnowledgeDocument.id == document_id, KnowledgeDocument.owner_id == user.id
+            KnowledgeDocument.id == document_id, KnowledgeDocument.owner_id == workspace_owner_id(user)
         )
     )
     if not document:
@@ -178,14 +178,16 @@ async def search_knowledge(
     words = [word.lower() for word in q.split() if len(word) > 2][:8]
     if not words:
         return []
-    filters = [KnowledgeChunk.owner_id == user.id]
+    filters = [KnowledgeChunk.owner_id == workspace_owner_id(user)]
     if agent_id:
         filters.append(or_(KnowledgeChunk.agent_id == agent_id, KnowledgeChunk.agent_id.is_(None)))
     rows = list((await session.scalars(select(KnowledgeChunk).where(*filters).limit(100))).all())
     documents = {
         row.id: row.title
         for row in (
-            await session.scalars(select(KnowledgeDocument).where(KnowledgeDocument.owner_id == user.id))
+            await session.scalars(
+                select(KnowledgeDocument).where(KnowledgeDocument.owner_id == workspace_owner_id(user))
+            )
         ).all()
     }
     results = []

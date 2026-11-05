@@ -47,6 +47,11 @@ def require_roles(*roles: str):
     return checker
 
 
+def workspace_owner_id(user: User) -> str:
+    """Return the stable owner id used to scope shared workspace resources."""
+    return user.workspace_id or user.id
+
+
 def client_meta(request: Request) -> tuple[str | None, str | None]:
     ip = request.client.host if request.client else None
     return ip, request.headers.get("user-agent")

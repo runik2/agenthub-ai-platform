@@ -37,6 +37,10 @@ async def test_provider_connections_are_scoped_to_the_workspace(
 
     listed = await client.get("/api/v1/providers", headers=viewer_headers)
     assert listed.status_code == 200
-    assert listed.json()["items"] == []
-    hidden = await client.get(f"/api/v1/providers/{provider.json()['id']}", headers=viewer_headers)
-    assert hidden.status_code == 404
+    assert any(item["id"] == provider.json()["id"] for item in listed.json()["items"])
+    forbidden = await client.patch(
+        f"/api/v1/providers/{provider.json()['id']}",
+        json={"name": "Should be denied"},
+        headers=viewer_headers,
+    )
+    assert forbidden.status_code == 403

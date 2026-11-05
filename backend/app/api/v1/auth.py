@@ -78,6 +78,7 @@ async def setup(
     )
     session.add(user)
     await session.flush()
+    user.workspace_id = user.id
     await write_audit(session, request, user.id, "auth.setup", "user", user.id)
     await session.commit()
     await session.refresh(user)

@@ -30,6 +30,9 @@ class User(TimestampMixin, Base):
     hashed_password: Mapped[str] = mapped_column(Text, nullable=False)
     full_name: Mapped[str] = mapped_column(String(255), default="", nullable=False)
     role: Mapped[str] = mapped_column(String(20), default="user", nullable=False)
+    workspace_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     two_factor_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)

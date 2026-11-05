@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, workspace_owner_id
 from app.core.errors import AppError
 from app.db.models import Agent, AgentMemory, User
 from app.db.session import get_session
@@ -13,10 +13,12 @@ router = APIRouter(prefix="/memories", tags=["memories"])
 
 @router.get("", response_model=list[MemoryOut])
 async def list_memories(
-    agent_id: str | None = None, search: str = Query("", max_length=200),
-    user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)
+    agent_id: str | None = None,
+    search: str = Query("", max_length=200),
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
 ):
-    stmt = select(AgentMemory).where(AgentMemory.owner_id == user.id)
+    stmt = select(AgentMemory).where(AgentMemory.owner_id == workspace_owner_id(user))
     if agent_id:
         stmt = stmt.where(or_(AgentMemory.agent_id == agent_id, AgentMemory.agent_id.is_(None)))
     if search.strip():
@@ -32,11 +34,11 @@ async def create_memory(
     session: AsyncSession = Depends(get_session),
 ):
     agent_exists = payload.agent_id and await session.scalar(
-        select(Agent.id).where(Agent.id == payload.agent_id, Agent.owner_id == user.id)
+        select(Agent.id).where(Agent.id == payload.agent_id, Agent.owner_id == workspace_owner_id(user))
     )
     if payload.agent_id and not agent_exists:
         raise AppError("AGENT_NOT_FOUND", "Agent not found", 404)
-    memory = AgentMemory(owner_id=user.id, source="manual", **payload.model_dump())
+    memory = AgentMemory(owner_id=workspace_owner_id(user), source="manual", **payload.model_dump())
     session.add(memory)
     await session.commit()
     await session.refresh(memory)
@@ -51,7 +53,9 @@ async def update_memory(
     session: AsyncSession = Depends(get_session),
 ):
     memory = await session.scalar(
-        select(AgentMemory).where(AgentMemory.id == memory_id, AgentMemory.owner_id == user.id)
+        select(AgentMemory).where(
+            AgentMemory.id == memory_id, AgentMemory.owner_id == workspace_owner_id(user)
+        )
     )
     if not memory:
         raise AppError("NOT_FOUND", "Memory not found", 404)
@@ -69,7 +73,9 @@ async def forget_memory(
     session: AsyncSession = Depends(get_session),
 ):
     memory = await session.scalar(
-        select(AgentMemory).where(AgentMemory.id == memory_id, AgentMemory.owner_id == user.id)
+        select(AgentMemory).where(
+            AgentMemory.id == memory_id, AgentMemory.owner_id == workspace_owner_id(user)
+        )
     )
     if not memory:
         raise AppError("NOT_FOUND", "Memory not found", 404)

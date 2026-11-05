@@ -6,6 +6,7 @@ from decimal import Decimal
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import workspace_owner_id
 from app.core.errors import AppError
 from app.db.models import (
     Agent,
@@ -44,8 +45,7 @@ def build_history(
         system_prompt += f"\n\nRelevant saved facts (use only when useful):\n{memory_context}"
     if knowledge:
         source_context = "\n".join(
-            f"[{title} · chunk {chunk.chunk_index + 1}] {chunk.content}"
-            for chunk, title in knowledge
+            f"[{title} · chunk {chunk.chunk_index + 1}] {chunk.content}" for chunk, title in knowledge
         )
         system_prompt += (
             "\n\nKnowledge base excerpts (cite the source title when relevant; "
@@ -71,7 +71,7 @@ async def send_message(
         raise AppError("AGENT_NO_PROVIDER", "This agent has no model provider attached", 409)
 
     provider = await session.get(LLMProvider, agent.provider_id)
-    if provider is None or provider.owner_id != user.id:
+    if provider is None or provider.owner_id != workspace_owner_id(user):
         raise AppError("PROVIDER_NOT_FOUND", "The provider of this agent no longer exists", 409)
     if not provider.is_active:
         raise AppError("PROVIDER_INACTIVE", "The provider of this agent is disabled", 409)
@@ -93,29 +93,49 @@ async def send_message(
             .order_by(Message.created_at.asc())
         )
     ).all()
-    memories = (await session.scalars(
-        select(AgentMemory).where(
-            AgentMemory.owner_id == user.id,
-            or_(AgentMemory.agent_id == agent.id, AgentMemory.agent_id.is_(None)),
-        ).order_by(AgentMemory.is_pinned.desc(), AgentMemory.updated_at.desc()).limit(12)
-    )).all()
+    memories = (
+        await session.scalars(
+            select(AgentMemory)
+            .where(
+                AgentMemory.owner_id == workspace_owner_id(user),
+                or_(AgentMemory.agent_id == agent.id, AgentMemory.agent_id.is_(None)),
+            )
+            .order_by(AgentMemory.is_pinned.desc(), AgentMemory.updated_at.desc())
+            .limit(12)
+        )
+    ).all()
     words = [word.lower() for word in content.split() if len(word) > 2][:8]
     knowledge: list[tuple[KnowledgeChunk, str]] = []
     if words:
         matches = or_(*(KnowledgeChunk.content.ilike(f"%{word}%") for word in words))
-        chunk_rows = list((await session.scalars(
-            select(KnowledgeChunk).where(
-                KnowledgeChunk.owner_id == user.id,
-                or_(KnowledgeChunk.agent_id == agent.id, KnowledgeChunk.agent_id.is_(None)),
-                matches,
-            ).limit(6)
-        )).all())
+        chunk_rows = list(
+            (
+                await session.scalars(
+                    select(KnowledgeChunk)
+                    .where(
+                        KnowledgeChunk.owner_id == workspace_owner_id(user),
+                        or_(KnowledgeChunk.agent_id == agent.id, KnowledgeChunk.agent_id.is_(None)),
+                        matches,
+                    )
+                    .limit(6)
+                )
+            ).all()
+        )
         document_ids = {chunk.document_id for chunk in chunk_rows}
-        titles = dict((await session.execute(
-            select(KnowledgeDocument.id, KnowledgeDocument.title).where(
-                KnowledgeDocument.id.in_(document_ids)
+        titles = (
+            dict(
+                (
+                    await session.execute(
+                        select(KnowledgeDocument.id, KnowledgeDocument.title).where(
+                            KnowledgeDocument.id.in_(document_ids),
+                            KnowledgeDocument.owner_id == workspace_owner_id(user),
+                        )
+                    )
+                ).all()
             )
-        )).all()) if document_ids else {}
+            if document_ids
+            else {}
+        )
         knowledge = [(chunk, titles.get(chunk.document_id, "Knowledge base")) for chunk in chunk_rows]
     payload = build_history(agent, list(history_rows), list(memories), knowledge)
 

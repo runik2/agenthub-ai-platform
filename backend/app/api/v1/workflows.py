@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, require_roles
+from app.api.deps import get_current_user, require_roles, workspace_owner_id
 from app.db.models import User, Workflow
 from app.db.session import get_session
 from app.queue.runtime import get_queue
@@ -18,7 +18,9 @@ async def list_workflows(
     return list(
         (
             await session.scalars(
-                select(Workflow).where(Workflow.owner_id == user.id).order_by(Workflow.created_at.desc())
+                select(Workflow)
+                .where(Workflow.owner_id == workspace_owner_id(user))
+                .order_by(Workflow.created_at.desc())
             )
         ).all()
     )
@@ -30,7 +32,7 @@ async def create_workflow(
     user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
 ):
-    wf = Workflow(owner_id=user.id, **payload.model_dump())
+    wf = Workflow(owner_id=workspace_owner_id(user), **payload.model_dump())
     session.add(wf)
     await session.commit()
     await session.refresh(wf)
@@ -42,10 +44,11 @@ async def get_workflow(
     workflow_id: str, user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)
 ):
     workflow = await session.scalar(
-        select(Workflow).where(Workflow.id == workflow_id, Workflow.owner_id == user.id)
+        select(Workflow).where(Workflow.id == workflow_id, Workflow.owner_id == workspace_owner_id(user))
     )
     if not workflow:
         from app.core.errors import AppError
+
         raise AppError("NOT_FOUND", "Workflow not found", 404)
     return workflow
 
@@ -58,7 +61,7 @@ async def update_workflow(
     session: AsyncSession = Depends(get_session),
 ):
     wf = await session.scalar(
-        select(Workflow).where(Workflow.id == workflow_id, Workflow.owner_id == user.id)
+        select(Workflow).where(Workflow.id == workflow_id, Workflow.owner_id == workspace_owner_id(user))
     )
     if not wf:
         from app.core.errors import AppError
@@ -78,7 +81,7 @@ async def delete_workflow(
     session: AsyncSession = Depends(get_session),
 ):
     wf = await session.scalar(
-        select(Workflow).where(Workflow.id == workflow_id, Workflow.owner_id == user.id)
+        select(Workflow).where(Workflow.id == workflow_id, Workflow.owner_id == workspace_owner_id(user))
     )
     if not wf:
         from app.core.errors import AppError
@@ -95,7 +98,7 @@ async def run_workflow(
     session: AsyncSession = Depends(get_session),
 ):
     wf = await session.scalar(
-        select(Workflow).where(Workflow.id == workflow_id, Workflow.owner_id == user.id)
+        select(Workflow).where(Workflow.id == workflow_id, Workflow.owner_id == workspace_owner_id(user))
     )
     if not wf:
         from app.core.errors import AppError
@@ -103,7 +106,7 @@ async def run_workflow(
         raise AppError("NOT_FOUND", "Workflow not found", 404)
     from app.db.models import Task
 
-    task = Task(owner_id=user.id, workflow_id=wf.id, name=f"Workflow: {wf.name}", input="")
+    task = Task(owner_id=workspace_owner_id(user), workflow_id=wf.id, name=f"Workflow: {wf.name}", input="")
     session.add(task)
     await session.commit()
     await session.refresh(task)

@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, require_roles, write_audit
+from app.api.deps import get_current_user, require_roles, workspace_owner_id, write_audit
 from app.config import get_settings
 from app.core.crypto import encrypt_value, key_hint
 from app.core.errors import AppError
@@ -77,7 +77,7 @@ async def list_providers(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> Page[ProviderOut]:
-    stmt = select(LLMProvider).where(LLMProvider.owner_id == user.id)
+    stmt = select(LLMProvider).where(LLMProvider.owner_id == workspace_owner_id(user))
     if kind.strip():
         stmt = stmt.where(LLMProvider.kind == kind.strip())
     if is_active is not None:
@@ -108,7 +108,7 @@ async def create_provider(
         raise AppError("PROVIDER_BASE_URL_REQUIRED", "base_url is required", 400)
     provider = LLMProvider(
         name=payload.name.strip(),
-        owner_id=user.id,
+        owner_id=workspace_owner_id(user),
         kind=payload.kind,
         base_url=base_url.rstrip("/"),
         default_model=payload.default_model.strip(),
@@ -135,7 +135,7 @@ async def get_provider(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> ProviderOut:
-    return provider_out(await _get_provider(session, provider_id, user.id))
+    return provider_out(await _get_provider(session, provider_id, workspace_owner_id(user)))
 
 
 @router.patch("/{provider_id}", response_model=ProviderOut)
@@ -146,7 +146,7 @@ async def update_provider(
     user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
 ) -> ProviderOut:
-    provider = await _get_provider(session, provider_id, user.id)
+    provider = await _get_provider(session, provider_id, workspace_owner_id(user))
     data = payload.model_dump(exclude_unset=True)
     api_key = data.pop("api_key", None)
     _apply_credentials(provider, api_key)
@@ -172,7 +172,7 @@ async def delete_provider(
     user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
 ) -> StatusResponse:
-    provider = await _get_provider(session, provider_id, user.id)
+    provider = await _get_provider(session, provider_id, workspace_owner_id(user))
     await session.delete(provider)
     await write_audit(session, request, user.id, "provider.deleted", "provider", provider_id)
     await session.commit()
@@ -186,7 +186,7 @@ async def test_connection(
     user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
 ) -> ConnectionResult:
-    provider = await _get_provider(session, provider_id, user.id)
+    provider = await _get_provider(session, provider_id, workspace_owner_id(user))
     ok, message, models, latency_ms = await llm.test_connection(provider)
     provider.last_checked_at = datetime.now(UTC)
     provider.last_check_status = "ok" if ok else "error"
@@ -214,7 +214,7 @@ async def refresh_models(
     user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
 ) -> ModelsResult:
-    provider = await _get_provider(session, provider_id, user.id)
+    provider = await _get_provider(session, provider_id, workspace_owner_id(user))
     try:
         models = await llm.fetch_models(provider)
     except llm.LLMError as exc:

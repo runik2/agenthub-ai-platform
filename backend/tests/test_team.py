@@ -38,9 +38,7 @@ async def test_non_admin_cannot_access_team(client: httpx.AsyncClient, auth_head
         headers=auth_headers,
     )
     member = created.json()
-    login = await client.post(
-        "/api/v1/auth/login", json={"email": member["email"], "password": "manager123"}
-    )
+    login = await client.post("/api/v1/auth/login", json={"email": member["email"], "password": "manager123"})
     response = await client.get(
         "/api/v1/team", headers={"Authorization": f"Bearer {login.json()['access_token']}"}
     )
@@ -71,3 +69,32 @@ async def test_viewer_cannot_change_workspace_configuration(
         headers=viewer_headers,
     )
     assert response.status_code == 403
+
+
+async def test_manager_can_work_with_admin_workspace_resources(
+    client: httpx.AsyncClient, auth_headers: dict[str, str]
+) -> None:
+    workflow = await client.post(
+        "/api/v1/workflows",
+        json={"name": "Shared team workflow", "description": "", "enabled": True, "steps": []},
+        headers=auth_headers,
+    )
+    assert workflow.status_code == 201, workflow.text
+    created = await client.post(
+        "/api/v1/team",
+        json={
+            "email": "workspace-manager@example.com",
+            "full_name": "Workspace Manager",
+            "password": "manager123",
+            "role": "manager",
+        },
+        headers=auth_headers,
+    )
+    assert created.status_code == 201, created.text
+    login = await client.post(
+        "/api/v1/auth/login", json={"email": "workspace-manager@example.com", "password": "manager123"}
+    )
+    manager_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    listed = await client.get("/api/v1/workflows", headers=manager_headers)
+    assert listed.status_code == 200
+    assert any(item["id"] == workflow.json()["id"] for item in listed.json())

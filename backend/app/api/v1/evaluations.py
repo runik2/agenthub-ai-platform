@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, workspace_owner_id
 from app.core.errors import AppError
 from app.db.models import Agent, EvaluationCase, EvaluationRun, LLMProvider, User
 from app.db.session import get_session
@@ -15,7 +15,9 @@ router = APIRouter(prefix="/evaluations", tags=["evaluations"])
 
 async def owned_case(case_id: str, user: User, session: AsyncSession) -> EvaluationCase:
     case = await session.scalar(
-        select(EvaluationCase).where(EvaluationCase.id == case_id, EvaluationCase.owner_id == user.id)
+        select(EvaluationCase).where(
+            EvaluationCase.id == case_id, EvaluationCase.owner_id == workspace_owner_id(user)
+        )
     )
     if not case:
         raise AppError("EVALUATION_NOT_FOUND", "Evaluation case not found", 404)
@@ -28,7 +30,7 @@ async def list_cases(user: User = Depends(get_current_user), session: AsyncSessi
         (
             await session.scalars(
                 select(EvaluationCase)
-                .where(EvaluationCase.owner_id == user.id)
+                .where(EvaluationCase.owner_id == workspace_owner_id(user))
                 .order_by(EvaluationCase.created_at.desc())
             )
         ).all()
@@ -42,10 +44,10 @@ async def create_case(
     session: AsyncSession = Depends(get_session),
 ):
     if not await session.scalar(
-        select(Agent.id).where(Agent.id == payload.agent_id, Agent.owner_id == user.id)
+        select(Agent.id).where(Agent.id == payload.agent_id, Agent.owner_id == workspace_owner_id(user))
     ):
         raise AppError("AGENT_NOT_FOUND", "Agent not found", 404)
-    case = EvaluationCase(owner_id=user.id, **payload.model_dump())
+    case = EvaluationCase(owner_id=workspace_owner_id(user), **payload.model_dump())
     session.add(case)
     await session.commit()
     await session.refresh(case)
@@ -58,7 +60,7 @@ async def list_runs(user: User = Depends(get_current_user), session: AsyncSessio
         (
             await session.scalars(
                 select(EvaluationRun)
-                .where(EvaluationRun.owner_id == user.id)
+                .where(EvaluationRun.owner_id == workspace_owner_id(user))
                 .order_by(EvaluationRun.created_at.desc())
                 .limit(100)
             )
@@ -73,9 +75,11 @@ async def run_case(
     case = await owned_case(case_id, user, session)
     agent = await session.get(Agent, case.agent_id)
     provider = await session.get(LLMProvider, agent.provider_id) if agent and agent.provider_id else None
-    if not agent or not provider or provider.owner_id != user.id or not provider.is_active:
+    if not agent or not provider or provider.owner_id != workspace_owner_id(user) or not provider.is_active:
         raise AppError("EVALUATION_NO_PROVIDER", "Agent needs an active model provider", 409)
-    run = EvaluationRun(owner_id=user.id, case_id=case.id, agent_id=agent.id, status="running")
+    run = EvaluationRun(
+        owner_id=workspace_owner_id(user), case_id=case.id, agent_id=agent.id, status="running"
+    )
     session.add(run)
     await session.flush()
     try:

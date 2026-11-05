@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, write_audit
+from app.api.deps import get_current_user, workspace_owner_id, write_audit
 from app.core.errors import AppError
 from app.core.pagination import Pagination, paginate
 from app.db.models import Agent, Conversation, Message, User
@@ -64,7 +64,9 @@ async def create_conversation(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> ConversationDetail:
-    agent = await session.scalar(select(Agent).where(Agent.id == payload.agent_id, Agent.owner_id == user.id))
+    agent = await session.scalar(
+        select(Agent).where(Agent.id == payload.agent_id, Agent.owner_id == workspace_owner_id(user))
+    )
     if agent is None:
         raise AppError("AGENT_NOT_FOUND", "Agent not found", 404)
     conversation = Conversation(

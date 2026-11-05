@@ -5,7 +5,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, require_roles, write_audit
+from app.api.deps import get_current_user, require_roles, workspace_owner_id, write_audit
 from app.core.errors import AppError
 from app.core.pagination import Pagination, paginate
 from app.db.models import Agent, Conversation, PromptVersion, User
@@ -47,7 +47,9 @@ async def unique_slug(session: AsyncSession, name: str, ignore_id: str | None = 
 
 
 async def get_owned_agent(session: AsyncSession, user: User, agent_id: str) -> Agent:
-    agent = await session.scalar(select(Agent).where(Agent.id == agent_id, Agent.owner_id == user.id))
+    agent = await session.scalar(
+        select(Agent).where(Agent.id == agent_id, Agent.owner_id == workspace_owner_id(user))
+    )
     if agent is None:
         raise AppError("AGENT_NOT_FOUND", "Agent not found", 404)
     return agent
@@ -82,7 +84,7 @@ async def list_agents(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> Page[AgentOut]:
-    stmt = select(Agent).where(Agent.owner_id == user.id)
+    stmt = select(Agent).where(Agent.owner_id == workspace_owner_id(user))
     if search.strip():
         pattern = f"%{search.strip().lower()}%"
         stmt = stmt.where(
@@ -117,7 +119,7 @@ async def create_agent(
     agent = Agent(
         **payload.model_dump(),
         slug=await unique_slug(session, payload.name),
-        owner_id=user.id,
+        owner_id=workspace_owner_id(user),
     )
     session.add(agent)
     await session.flush()
@@ -151,7 +153,7 @@ async def create_from_template(
         avatar_color=template.avatar_color,
         tags=list(template.tags),
         template_slug=template.slug,
-        owner_id=user.id,
+        owner_id=workspace_owner_id(user),
     )
     session.add(agent)
     await session.flush()
@@ -193,11 +195,14 @@ async def update_agent(
     if "provider_id" in data and data["provider_id"] is not None:
         from app.db.models import LLMProvider
 
-        if await session.scalar(
-            select(LLMProvider.id).where(
-                LLMProvider.id == data["provider_id"], LLMProvider.owner_id == user.id
+        if (
+            await session.scalar(
+                select(LLMProvider.id).where(
+                    LLMProvider.id == data["provider_id"], LLMProvider.owner_id == workspace_owner_id(user)
+                )
             )
-        ) is None:
+            is None
+        ):
             raise AppError("PROVIDER_NOT_FOUND", "Provider not found", 404)
     if "name" in data and data["name"] != agent.name:
         agent.slug = await unique_slug(session, data["name"], ignore_id=agent.id)
@@ -226,7 +231,7 @@ async def list_prompt_versions(
     await get_owned_agent(session, user, agent_id)
     rows = await session.scalars(
         select(PromptVersion)
-        .where(PromptVersion.agent_id == agent_id, PromptVersion.owner_id == user.id)
+        .where(PromptVersion.agent_id == agent_id, PromptVersion.owner_id == workspace_owner_id(user))
         .order_by(PromptVersion.version.desc())
     )
     return [PromptVersionOut.model_validate(row) for row in rows]
@@ -246,7 +251,7 @@ async def restore_prompt_version(
         select(PromptVersion).where(
             PromptVersion.id == version_id,
             PromptVersion.agent_id == agent.id,
-            PromptVersion.owner_id == user.id,
+            PromptVersion.owner_id == workspace_owner_id(user),
         )
     )
     if not version:
@@ -282,7 +287,7 @@ async def duplicate_agent(
         avatar_color=source.avatar_color,
         tags=list(source.tags or []),
         template_slug=source.template_slug,
-        owner_id=user.id,
+        owner_id=workspace_owner_id(user),
     )
     session.add(clone)
     await session.flush()
