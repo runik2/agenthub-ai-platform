@@ -21,6 +21,7 @@ from app.db.models import (
     User,
 )
 from app.services import embeddings, llm
+from app.services.budget import current_budget
 from app.services.pricing import compute_cost
 
 HISTORY_LIMIT = 20
@@ -153,6 +154,15 @@ async def send_message(
         )
         knowledge = [(chunk, titles.get(chunk.document_id, "Knowledge base")) for chunk in chunk_rows]
     payload = build_history(agent, list(history_rows), list(memories), knowledge)
+
+    budget = await current_budget(session, user)
+    if budget["status"] == "exceeded":
+        raise AppError(
+            "BUDGET_EXCEEDED",
+            "Workspace model budget has been exceeded",
+            429,
+            {"budget": budget},
+        )
 
     model_name = agent.model_name or provider.default_model
     try:

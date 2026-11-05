@@ -7,14 +7,22 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, workspace_owner_id
+from app.api.deps import get_current_user, require_roles, workspace_owner_id
 from app.db.models import Agent, Conversation, LLMProvider, LLMUsage, Message, User
 from app.db.session import get_session
+from app.services.budget import current_budget
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
+
+
+class BudgetUpdate(BaseModel):
+    token_limit: int = Field(default=0, ge=0, le=10_000_000_000)
+    cost_limit: float = Field(default=0, ge=0, le=10_000_000)
+    warning_percent: int = Field(default=80, ge=1, le=100)
 
 
 @router.get("/summary")
@@ -212,7 +220,31 @@ async def overview(
             }
             for row in provider_rows
         ],
+        "budget": await current_budget(session, user),
     }
+
+
+@router.get("/budget")
+async def get_budget(
+    user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)
+) -> dict:
+    return await current_budget(session, user)
+
+
+@router.put("/budget")
+async def update_budget(
+    payload: BudgetUpdate,
+    user: User = Depends(require_roles("admin", "manager")),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    owner = await session.get(User, workspace_owner_id(user))
+    if not owner:
+        return await current_budget(session, user)
+    owner.monthly_token_limit = payload.token_limit
+    owner.monthly_cost_limit = Decimal(str(payload.cost_limit))
+    owner.budget_warning_percent = payload.warning_percent
+    await session.commit()
+    return await current_budget(session, user)
 
 
 @router.get("/economics")

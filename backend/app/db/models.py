@@ -39,6 +39,9 @@ class User(TimestampMixin, Base):
     two_factor_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     failed_login_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    monthly_token_limit: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    monthly_cost_limit: Mapped[Decimal] = mapped_column(Numeric(12, 6), default=Decimal("0"), nullable=False)
+    budget_warning_percent: Mapped[int] = mapped_column(Integer, default=80, nullable=False)
 
     agents: Mapped[list[Agent]] = relationship(back_populates="owner")
 

@@ -203,6 +203,15 @@ export interface AnalyticsOverview {
     tokens: number;
     cost: number;
   }[];
+  budget: {
+    tokens: number;
+    cost: number;
+    token_limit: number;
+    cost_limit: number;
+    warning_percent: number;
+    ratio: number;
+    status: "ok" | "warning" | "exceeded";
+  };
 }
 
 export interface AuditLogEntry {
