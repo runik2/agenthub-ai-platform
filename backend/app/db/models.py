@@ -418,6 +418,7 @@ class WebhookEndpoint(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     slug: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
     secret_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    allowed_ips: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     last_received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

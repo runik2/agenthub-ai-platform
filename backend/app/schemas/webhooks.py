@@ -8,6 +8,7 @@ class WebhookCreate(BaseModel):
     slug: str = Field(min_length=3, max_length=120, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
     workflow_id: str
     enabled: bool = True
+    allowed_ips: list[str] = Field(default_factory=list, max_length=32)
 
 
 class WebhookOut(BaseModel):
@@ -17,6 +18,7 @@ class WebhookOut(BaseModel):
     slug: str
     workflow_id: str
     enabled: bool
+    allowed_ips: list[str]
     last_received_at: datetime | None
     created_at: datetime
 

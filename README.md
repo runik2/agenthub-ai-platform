@@ -34,7 +34,7 @@
 - Durable tasks, in-process очередь для local и ARQ/Redis-контур для Docker: статусы, retries,
   сохранённые trace шагов и операторская очередь подтверждений.
 - Безопасные интеграции: HTTPS allowlist по домену и пути, запрет секретов в URL, approval для
-  опасных действий, HMAC-webhooks, idempotency, retries и журнал вызовов.
+  опасных действий, HMAC-webhooks с IP/CIDR allowlist, idempotency, retries и журнал вызовов.
 - Память агентов и RAG: ручные факты, загрузка TXT/MD/CSV/JSON/PDF/DOCX, импорт веб-страниц,
   чанкинг, embeddings, семантический поиск, источники ответа и версии документов.
 - Evaluations: контрольные кейсы, batch-прогоны, pass rate, latency/cost и сравнение моделей.

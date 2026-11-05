@@ -184,6 +184,50 @@ async def test_webhook_event_id_is_idempotent(
     assert queue.calls == 1
 
 
+async def test_webhook_ip_allowlist_rejects_untrusted_source(
+    client: httpx.AsyncClient, auth_headers: dict[str, str]
+) -> None:
+    workflow = await client.post(
+        "/api/v1/workflows",
+        json={"name": "IP restricted workflow", "description": "", "enabled": True, "steps": []},
+        headers=auth_headers,
+    )
+    endpoint = await client.post(
+        "/api/v1/webhooks/endpoints",
+        json={
+            "name": "Restricted",
+            "slug": "restricted-ip",
+            "workflow_id": workflow.json()["id"],
+            "allowed_ips": ["10.20.0.0/16"],
+        },
+        headers=auth_headers,
+    )
+    assert endpoint.status_code == 201, endpoint.text
+    response = await client.post("/api/v1/webhooks/incoming/restricted-ip", content=b"{}")
+    assert response.status_code == 403
+
+
+async def test_webhook_rejects_invalid_ip_rule(
+    client: httpx.AsyncClient, auth_headers: dict[str, str]
+) -> None:
+    workflow = await client.post(
+        "/api/v1/workflows",
+        json={"name": "Invalid IP workflow", "description": "", "enabled": True, "steps": []},
+        headers=auth_headers,
+    )
+    response = await client.post(
+        "/api/v1/webhooks/endpoints",
+        json={
+            "name": "Invalid rule",
+            "slug": "invalid-ip-rule",
+            "workflow_id": workflow.json()["id"],
+            "allowed_ips": ["not-an-ip"],
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == 422
+
+
 async def test_viewer_cannot_configure_webhook_endpoint(
     client: httpx.AsyncClient, auth_headers: dict[str, str]
 ) -> None:

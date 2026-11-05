@@ -5,6 +5,7 @@ import hmac
 import json
 import secrets
 from datetime import UTC, datetime
+from ipaddress import ip_address, ip_network
 
 from fastapi import APIRouter, Depends, Header, Request
 from sqlalchemy import select
@@ -62,6 +63,15 @@ async def create_endpoint(
     user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
 ):
+    try:
+        for rule in payload.allowed_ips:
+            ip_network(rule, strict=False)
+    except ValueError as exc:
+        raise AppError(
+            "INVALID_WEBHOOK_IP",
+            "Webhook IP rules must be valid IP addresses or CIDR ranges",
+            422,
+        ) from exc
     workflow = await session.scalar(
         select(Workflow).where(
             Workflow.id == payload.workflow_id, Workflow.owner_id == workspace_owner_id(user)
@@ -171,6 +181,25 @@ async def receive_webhook(
     )
     if not endpoint:
         raise AppError("WEBHOOK_NOT_FOUND", "Webhook endpoint not found", 404)
+    if endpoint.allowed_ips:
+        client_host = request.client.host if request.client else ""
+        try:
+            source_ip = ip_address(client_host)
+            allowed = any(source_ip in ip_network(rule, strict=False) for rule in endpoint.allowed_ips)
+        except ValueError:
+            allowed = False
+        if not allowed:
+            session.add(
+                WebhookDelivery(
+                    endpoint_id=endpoint.id,
+                    status="rejected",
+                    signature_valid=False,
+                    payload={},
+                    error="Source IP is not allowlisted",
+                )
+            )
+            await session.commit()
+            raise AppError("WEBHOOK_IP_NOT_ALLOWED", "Source IP is not allowed for this webhook", 403)
     if x_agenthub_event_id and len(x_agenthub_event_id) > 200:
         raise AppError("INVALID_WEBHOOK_EVENT_ID", "Webhook event id is too long", 422)
     max_body = max(1, get_settings().webhook_max_body_bytes)
