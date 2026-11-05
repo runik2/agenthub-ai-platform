@@ -23,6 +23,26 @@ router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 incoming_router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
 
+async def workflow_needs_approval(
+    session: AsyncSession, workflow: Workflow | None, owner_id: str
+) -> bool:
+    if not workflow:
+        return False
+    if any(step.get("type") == "approval" for step in workflow.steps or []):
+        return True
+    tool_ids = [step.get("tool_id") for step in workflow.steps or [] if step.get("tool_id")]
+    return bool(
+        tool_ids
+        and await session.scalar(
+            select(IntegrationTool.id).where(
+                IntegrationTool.id.in_(tool_ids),
+                IntegrationTool.owner_id == owner_id,
+                IntegrationTool.requires_approval.is_(True),
+            )
+        )
+    )
+
+
 @router.get("/endpoints", response_model=list[WebhookOut])
 async def list_endpoints(
     user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)
@@ -86,6 +106,56 @@ async def list_deliveries(
     )
 
 
+@router.post("/endpoints/{endpoint_id}/deliveries/{delivery_id}/retry", response_model=DeliveryOut)
+async def retry_delivery(
+    endpoint_id: str,
+    delivery_id: str,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> WebhookDelivery:
+    endpoint = await session.scalar(
+        select(WebhookEndpoint).where(
+            WebhookEndpoint.id == endpoint_id, WebhookEndpoint.owner_id == user.id
+        )
+    )
+    delivery = await session.scalar(
+        select(WebhookDelivery).where(
+            WebhookDelivery.id == delivery_id, WebhookDelivery.endpoint_id == endpoint_id
+        )
+    )
+    if not endpoint or not delivery:
+        raise AppError("WEBHOOK_DELIVERY_NOT_FOUND", "Webhook delivery not found", 404)
+    if not delivery.signature_valid:
+        raise AppError("WEBHOOK_RETRY_UNSAFE", "Rejected deliveries cannot be retried", 409)
+    if delivery.status not in {"failed"}:
+        raise AppError("WEBHOOK_RETRY_NOT_AVAILABLE", "Only failed deliveries can be retried", 409)
+    workflow = await session.get(Workflow, endpoint.workflow_id)
+    requires_approval = await workflow_needs_approval(session, workflow, endpoint.owner_id)
+    task = Task(
+        owner_id=endpoint.owner_id,
+        workflow_id=endpoint.workflow_id,
+        name=f"Webhook retry: {endpoint.name}",
+        input=json.dumps(delivery.payload, ensure_ascii=False),
+        requires_approval=requires_approval,
+        status="waiting_approval" if requires_approval else "pending",
+    )
+    session.add(task)
+    await session.flush()
+    delivery.task_id = task.id
+    delivery.status = "waiting_approval" if requires_approval else "retrying"
+    delivery.error = None
+    await session.commit()
+    if not requires_approval:
+        try:
+            await get_queue().enqueue("execute_task", {"task_id": task.id})
+        except Exception as exc:
+            task.status, task.error = "failed", str(exc)
+            delivery.status, delivery.error = "failed", str(exc)
+            await session.commit()
+    await session.refresh(delivery)
+    return delivery
+
+
 @incoming_router.post("/incoming/{slug}")
 async def receive_webhook(
     slug: str,
@@ -132,22 +202,7 @@ async def receive_webhook(
     )
     session.add(delivery)
     workflow = await session.get(Workflow, endpoint.workflow_id)
-    requires_approval = bool(
-        workflow
-        and any(step.get("type") == "approval" for step in workflow.steps or [])
-    )
-    if workflow and not requires_approval:
-        tool_ids = [step.get("tool_id") for step in workflow.steps or [] if step.get("tool_id")]
-        if tool_ids:
-            requires_approval = bool(
-                await session.scalar(
-                    select(IntegrationTool.id).where(
-                        IntegrationTool.id.in_(tool_ids),
-                        IntegrationTool.owner_id == endpoint.owner_id,
-                        IntegrationTool.requires_approval.is_(True),
-                    )
-                )
-            )
+    requires_approval = await workflow_needs_approval(session, workflow, endpoint.owner_id)
     task = Task(
         owner_id=endpoint.owner_id,
         workflow_id=endpoint.workflow_id,

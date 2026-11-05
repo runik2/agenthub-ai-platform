@@ -102,3 +102,49 @@ async def test_webhook_respects_approval_steps_and_rejects_invalid_json(
         headers={"X-AgentHub-Signature": valid_invalid_body_signature},
     )
     assert invalid_body_response.status_code == 400
+
+
+async def test_failed_webhook_delivery_can_be_retried(
+    client: httpx.AsyncClient, auth_headers: dict[str, str], monkeypatch
+) -> None:
+    class FailingQueue:
+        async def enqueue(self, *_args, **_kwargs) -> None:
+            raise RuntimeError("redis unavailable")
+
+    workflow = await client.post(
+        "/api/v1/workflows",
+        json={"name": "Retry workflow", "description": "", "enabled": True, "steps": []},
+        headers=auth_headers,
+    )
+    created = await client.post(
+        "/api/v1/webhooks/endpoints",
+        json={"name": "Retry orders", "slug": "retry-orders", "workflow_id": workflow.json()["id"]},
+        headers=auth_headers,
+    )
+    endpoint = created.json()
+    body = b'{"order_id":"99"}'
+    signature = "sha256=" + hmac.new(endpoint["secret"].encode(), body, hashlib.sha256).hexdigest()
+    monkeypatch.setattr(webhooks, "get_queue", lambda: FailingQueue())
+    failed = await client.post(
+        "/api/v1/webhooks/incoming/retry-orders",
+        content=body,
+        headers={"X-AgentHub-Signature": signature},
+    )
+    assert failed.status_code == 503
+    deliveries = await client.get(
+        f"/api/v1/webhooks/endpoints/{endpoint['id']}/deliveries", headers=auth_headers
+    )
+    delivery = deliveries.json()[0]
+    assert delivery["status"] == "failed"
+
+    class WorkingQueue:
+        async def enqueue(self, *_args, **_kwargs) -> None:
+            return None
+
+    monkeypatch.setattr(webhooks, "get_queue", lambda: WorkingQueue())
+    retried = await client.post(
+        f"/api/v1/webhooks/endpoints/{endpoint['id']}/deliveries/{delivery['id']}/retry",
+        headers=auth_headers,
+    )
+    assert retried.status_code == 200, retried.text
+    assert retried.json()["status"] == "retrying"
