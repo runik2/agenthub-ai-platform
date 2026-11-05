@@ -18,6 +18,7 @@ import {
   UsersRound,
   BookOpen,
   FlaskConical,
+  RadioTower,
   X,
   Command,
 } from "lucide-react";
@@ -42,6 +43,7 @@ const soonNav: { to: string; key?: string; label?: string; icon: typeof Brain }[
   { to: "/team", label: "Команда", icon: UsersRound },
   { to: "/knowledge", label: "База знаний", icon: BookOpen },
   { to: "/evaluations", label: "Evaluations", icon: FlaskConical },
+  { to: "/webhooks", label: "Webhooks", icon: RadioTower },
   { to: "/tasks", key: "nav.tasks", icon: ListChecks },
   { to: "/workflows", key: "nav.workflows", icon: Workflow },
   { to: "/schedules", key: "nav.schedules", icon: CalendarClock },
@@ -87,6 +89,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                             ? "База знаний"
                             : location.pathname.startsWith("/evaluations")
                               ? "Evaluations"
+                              : location.pathname.startsWith("/webhooks")
+                                ? "Webhooks"
             : t("nav.settings");
 
   const sidebar = (

@@ -16,6 +16,8 @@ from app.api.v1.settings import router as settings_router
 from app.api.v1.tasks import router as tasks_router
 from app.api.v1.team import router as team_router
 from app.api.v1.tools import router as tools_router
+from app.api.v1.webhooks import incoming_router as incoming_webhooks_router
+from app.api.v1.webhooks import router as webhooks_router
 from app.api.v1.workflows import router as workflows_router
 
 api_router = APIRouter()
@@ -33,4 +35,6 @@ api_router.include_router(tasks_router)
 api_router.include_router(team_router)
 api_router.include_router(tools_router)
 api_router.include_router(workflows_router)
+api_router.include_router(webhooks_router)
+api_router.include_router(incoming_webhooks_router)
 api_router.include_router(schedules_router)

@@ -312,3 +312,28 @@ class Schedule(TimestampMixin, Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     run_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+
+class WebhookEndpoint(TimestampMixin, Base):
+    __tablename__ = "webhook_endpoints"
+
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflows.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    slug: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    secret_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    last_received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class WebhookDelivery(TimestampMixin, Base):
+    __tablename__ = "webhook_deliveries"
+
+    endpoint_id: Mapped[str] = mapped_column(
+        ForeignKey("webhook_endpoints.id", ondelete="CASCADE"), index=True
+    )
+    task_id: Mapped[str | None] = mapped_column(ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    signature_valid: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    payload: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)

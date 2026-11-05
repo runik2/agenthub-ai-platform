@@ -24,6 +24,7 @@ import { PromptVersionsPage } from "./pages/PromptVersionsPage";
 import { TeamPage } from "./pages/TeamPage";
 import { KnowledgePage } from "./pages/KnowledgePage";
 import { EvaluationsPage } from "./pages/EvaluationsPage";
+import { WebhooksPage } from "./pages/WebhooksPage";
 
 function Splash() {
   return (
@@ -146,6 +147,7 @@ export default function App() {
         <Route path="/team" element={<RequireAuth><TeamPage /></RequireAuth>} />
         <Route path="/knowledge" element={<RequireAuth><KnowledgePage /></RequireAuth>} />
         <Route path="/evaluations" element={<RequireAuth><EvaluationsPage /></RequireAuth>} />
+        <Route path="/webhooks" element={<RequireAuth><WebhooksPage /></RequireAuth>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </SetupGuard>
