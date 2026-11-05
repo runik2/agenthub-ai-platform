@@ -100,7 +100,9 @@ class LLMProvider(TimestampMixin, Base):
     models_cache: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     extra_headers: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
-    agents: Mapped[list[Agent]] = relationship(back_populates="provider")
+    agents: Mapped[list[Agent]] = relationship(
+        back_populates="provider", foreign_keys="Agent.provider_id"
+    )
     owner: Mapped[User] = relationship()
 
 
@@ -113,6 +115,9 @@ class Agent(TimestampMixin, Base):
     system_prompt: Mapped[str] = mapped_column(Text, nullable=False)
     greeting: Mapped[str] = mapped_column(Text, default="", nullable=False)
     provider_id: Mapped[str | None] = mapped_column(
+        ForeignKey("llm_providers.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    fallback_provider_id: Mapped[str | None] = mapped_column(
         ForeignKey("llm_providers.id", ondelete="SET NULL"), nullable=True, index=True
     )
     model_name: Mapped[str] = mapped_column(String(255), default="", nullable=False)
@@ -128,7 +133,9 @@ class Agent(TimestampMixin, Base):
     )
 
     owner: Mapped[User] = relationship(back_populates="agents")
-    provider: Mapped[LLMProvider | None] = relationship(back_populates="agents")
+    provider: Mapped[LLMProvider | None] = relationship(
+        back_populates="agents", foreign_keys=[provider_id]
+    )
 
 
 class Conversation(TimestampMixin, Base):

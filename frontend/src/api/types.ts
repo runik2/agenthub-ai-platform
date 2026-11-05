@@ -33,6 +33,7 @@ export interface Agent {
   system_prompt: string;
   greeting: string;
   provider_id: string | null;
+  fallback_provider_id: string | null;
   model_name: string;
   temperature: number;
   max_tokens: number;
@@ -52,6 +53,7 @@ export interface AgentPayload {
   system_prompt: string;
   greeting: string;
   provider_id: string | null;
+  fallback_provider_id: string | null;
   model_name: string;
   temperature: number;
   max_tokens: number;

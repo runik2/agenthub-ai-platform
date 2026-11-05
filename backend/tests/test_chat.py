@@ -152,6 +152,46 @@ async def test_provider_failure_is_reported_not_swallowed(
     assert failed and failed[0]["error_code"] == "PROVIDER_ERROR"
 
 
+async def test_agent_falls_back_to_secondary_provider(
+    client: httpx.AsyncClient, auth_headers: dict[str, str], mock_llm
+) -> None:
+    context = await _prepare(client, auth_headers)
+    fallback = await client.post(
+        "/api/v1/providers",
+        json={
+            "name": "Fallback Ollama",
+            "kind": "ollama",
+            "base_url": "http://fallback-ollama:11434",
+            "default_model": "fallback-model",
+        },
+        headers=auth_headers,
+    )
+    assert fallback.status_code == 201, fallback.text
+    updated = await client.patch(
+        f"/api/v1/agents/{context['agent']['id']}",
+        json={"fallback_provider_id": fallback.json()["id"]},
+        headers=auth_headers,
+    )
+    assert updated.status_code == 200, updated.text
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.host or "")
+        if request.url.host == "mock-ollama":
+            return httpx.Response(503, content=b'{"error":"primary down"}')
+        return ollama_answer(content="Fallback answer")
+
+    mock_llm["handler"] = handler
+    response = await client.post(
+        f"/api/v1/conversations/{context['conversation']['id']}/messages",
+        json={"content": "Use the backup provider"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["assistant_message"]["content"] == "Fallback answer"
+    assert calls == ["mock-ollama", "fallback-ollama"]
+
+
 async def test_agent_without_provider_is_rejected(
     client: httpx.AsyncClient, auth_headers: dict[str, str]
 ) -> None:

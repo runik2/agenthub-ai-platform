@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_roles, workspace_owner_id, write_audit
 from app.core.errors import AppError
 from app.core.pagination import Pagination, paginate
-from app.db.models import Agent, Conversation, PromptVersion, User
+from app.db.models import Agent, Conversation, LLMProvider, PromptVersion, User
 from app.db.session import get_session
 from app.schemas.agents import AgentCreate, AgentOut, AgentTemplate, AgentUpdate
 from app.schemas.common import Page, StatusResponse
@@ -116,6 +116,14 @@ async def create_agent(
     user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
 ) -> AgentOut:
+    for provider_id in (payload.provider_id, payload.fallback_provider_id):
+        if provider_id and not await session.scalar(
+            select(LLMProvider.id).where(
+                LLMProvider.id == provider_id,
+                LLMProvider.owner_id == workspace_owner_id(user),
+            )
+        ):
+            raise AppError("PROVIDER_NOT_FOUND", "Provider not found", 404)
     agent = Agent(
         **payload.model_dump(),
         slug=await unique_slug(session, payload.name),
@@ -192,13 +200,17 @@ async def update_agent(
 ) -> AgentOut:
     agent = await get_owned_agent(session, user, agent_id)
     data = payload.model_dump(exclude_unset=True)
-    if "provider_id" in data and data["provider_id"] is not None:
+    provider_fields = [field for field in ("provider_id", "fallback_provider_id") if field in data]
+    for provider_field in provider_fields:
+        if data[provider_field] is None:
+            continue
         from app.db.models import LLMProvider
 
         if (
             await session.scalar(
                 select(LLMProvider.id).where(
-                    LLMProvider.id == data["provider_id"], LLMProvider.owner_id == workspace_owner_id(user)
+                    LLMProvider.id == data[provider_field],
+                    LLMProvider.owner_id == workspace_owner_id(user),
                 )
             )
             is None

@@ -16,6 +16,7 @@ class AgentCreate(BaseModel):
     system_prompt: str = Field(min_length=1, max_length=8000)
     greeting: str = Field(default="", max_length=2000)
     provider_id: str | None = None
+    fallback_provider_id: str | None = None
     model_name: str = Field(default="", max_length=255)
     temperature: float = Field(default=0.7, ge=0, le=2)
     max_tokens: int = Field(default=1024, ge=16, le=32000)
@@ -36,6 +37,7 @@ class AgentUpdate(BaseModel):
     system_prompt: str | None = Field(default=None, min_length=1, max_length=8000)
     greeting: str | None = Field(default=None, max_length=2000)
     provider_id: str | None = None
+    fallback_provider_id: str | None = None
     model_name: str | None = Field(default=None, max_length=255)
     temperature: float | None = Field(default=None, ge=0, le=2)
     max_tokens: int | None = Field(default=None, ge=16, le=32000)
@@ -52,6 +54,7 @@ class AgentOut(ORMModel):
     system_prompt: str
     greeting: str
     provider_id: str | None
+    fallback_provider_id: str | None
     model_name: str
     temperature: float
     max_tokens: int

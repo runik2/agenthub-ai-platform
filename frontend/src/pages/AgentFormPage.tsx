@@ -17,6 +17,7 @@ const emptyAgent: AgentPayload = {
   system_prompt: "",
   greeting: "",
   provider_id: null,
+  fallback_provider_id: null,
   model_name: "",
   temperature: 0.7,
   max_tokens: 1024,
@@ -47,6 +48,7 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" }) {
         system_prompt: agent.system_prompt,
         greeting: agent.greeting,
         provider_id: agent.provider_id,
+        fallback_provider_id: agent.fallback_provider_id,
         model_name: agent.model_name,
         temperature: agent.temperature,
         max_tokens: agent.max_tokens,
@@ -198,6 +200,17 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" }) {
                 <option key={provider.id} value={provider.id}>
                   {provider.name}
                 </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Резервный провайдер" hint="Используется, если основной провайдер недоступен.">
+            <Select
+              value={form.fallback_provider_id ?? ""}
+              onChange={(event) => update("fallback_provider_id", event.target.value || null)}
+            >
+              <option value="">Без fallback</option>
+              {(providers.data?.items ?? []).filter((provider) => provider.id !== form.provider_id).map((provider) => (
+                <option key={provider.id} value={provider.id}>{provider.name}</option>
               ))}
             </Select>
           </Field>

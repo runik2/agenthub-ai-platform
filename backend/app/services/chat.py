@@ -73,10 +73,31 @@ async def send_message(
         raise AppError("AGENT_NO_PROVIDER", "This agent has no model provider attached", 409)
 
     provider = await session.get(LLMProvider, agent.provider_id)
+    fallback = (
+        await session.get(LLMProvider, agent.fallback_provider_id)
+        if agent.fallback_provider_id
+        else None
+    )
+    if provider is None or provider.owner_id != workspace_owner_id(user):
+        if fallback and fallback.owner_id == workspace_owner_id(user) and fallback.is_active:
+            provider = fallback
+        else:
+            raise AppError("PROVIDER_NOT_FOUND", "The provider of this agent no longer exists", 409)
+    if not provider.is_active:
+        if fallback and fallback.owner_id == workspace_owner_id(user) and fallback.is_active:
+            provider = fallback
+        else:
+            raise AppError("PROVIDER_INACTIVE", "The provider of this agent is disabled", 409)
+    providers = [provider]
+    if (
+        fallback
+        and fallback.id != provider.id
+        and fallback.owner_id == workspace_owner_id(user)
+        and fallback.is_active
+    ):
+        providers.append(fallback)
     if provider is None or provider.owner_id != workspace_owner_id(user):
         raise AppError("PROVIDER_NOT_FOUND", "The provider of this agent no longer exists", 409)
-    if not provider.is_active:
-        raise AppError("PROVIDER_INACTIVE", "The provider of this agent is disabled", 409)
 
     now = datetime.now(UTC)
     user_message = Message(
@@ -165,15 +186,25 @@ async def send_message(
         )
 
     model_name = agent.model_name or provider.default_model
-    try:
-        result = await llm.chat(
-            provider=provider,
-            model=model_name,
-            messages=payload,
-            temperature=agent.temperature,
-            max_tokens=agent.max_tokens,
-        )
-    except llm.LLMError as exc:
+    last_error: llm.LLMError | None = None
+    result = None
+    for candidate in providers:
+        candidate_model = agent.model_name if candidate.id == providers[0].id else candidate.default_model
+        try:
+            result = await llm.chat(
+                provider=candidate,
+                model=candidate_model,
+                messages=payload,
+                temperature=agent.temperature,
+                max_tokens=agent.max_tokens,
+            )
+            provider = candidate
+            model_name = candidate_model
+            break
+        except llm.LLMError as exc:
+            last_error = exc
+    if result is None:
+        exc = last_error or llm.LLMError("PROVIDER_UNAVAILABLE", "No model provider answered")
         session.add(
             LLMUsage(
                 conversation_id=conversation.id,
