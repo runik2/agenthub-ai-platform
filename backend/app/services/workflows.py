@@ -45,6 +45,7 @@ async def _execute_steps(
     for step in steps or []:
         step_type = step.get("type", "agent")
         step_input = value
+        step_error: str | None = None
         started = time.perf_counter()
         try:
             if step_type == "condition":
@@ -133,6 +134,9 @@ async def _execute_steps(
                 agent.max_tokens,
             )
             value = answer.content
+        except Exception as exc:  # noqa: BLE001
+            step_error = str(exc)
+            raise
         finally:
             if trace is not None:
                 trace.append(
@@ -142,6 +146,7 @@ async def _execute_steps(
                         "input": step_input,
                         "output": value,
                         "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+                        "error": step_error,
                     }
                 )
             metrics.observe_workflow_step(

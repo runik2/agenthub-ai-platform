@@ -75,6 +75,28 @@ async def test_workflow_parallel_branches_join_results() -> None:
     assert json.loads(result) == {"sales": "sales: lead", "support": "support: lead"}
 
 
+@pytest.mark.asyncio
+async def test_workflow_trace_records_step_io_and_duration() -> None:
+    workflow = type(
+        "WorkflowStub",
+        (),
+        {
+            "owner_id": "owner",
+            "id": "trace-workflow",
+            "steps": [
+                {"type": "tool", "tool": "text_template", "template": "done: {input}"}
+            ],
+        },
+    )()
+    trace: list[dict] = []
+    result = await execute_workflow(None, workflow, "input", trace)
+    assert result == "done: input"
+    assert trace[0]["input"] == "input"
+    assert trace[0]["output"] == "done: input"
+    assert trace[0]["duration_ms"] >= 0
+    assert trace[0]["error"] is None
+
+
 def test_arq_queue_lifecycle_is_local_import_safe() -> None:
     queue = ArqTaskQueue("redis://localhost:6379/0")
     queue.start()
