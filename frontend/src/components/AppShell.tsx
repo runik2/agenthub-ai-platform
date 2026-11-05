@@ -15,6 +15,7 @@ import {
   Settings,
   Workflow,
   Wrench,
+  UsersRound,
   X,
   Command,
 } from "lucide-react";
@@ -36,6 +37,7 @@ const mainNav = [
 const soonNav: { to: string; key?: string; label?: string; icon: typeof Brain }[] = [
   { to: "/memories", label: "Память", icon: Brain },
   { to: "/tools", key: "nav.tools", icon: Wrench },
+  { to: "/team", label: "Команда", icon: UsersRound },
   { to: "/tasks", key: "nav.tasks", icon: ListChecks },
   { to: "/workflows", key: "nav.workflows", icon: Workflow },
   { to: "/schedules", key: "nav.schedules", icon: CalendarClock },
@@ -75,6 +77,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                       ? "Память"
                       : location.pathname.startsWith("/tools")
                         ? t("nav.tools")
+                        : location.pathname.startsWith("/team")
+                          ? "Команда"
             : t("nav.settings");
 
   const sidebar = (
