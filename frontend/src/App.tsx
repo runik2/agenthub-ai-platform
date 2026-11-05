@@ -23,6 +23,7 @@ import { ToolsPage } from "./pages/ToolsPage";
 import { PromptVersionsPage } from "./pages/PromptVersionsPage";
 import { TeamPage } from "./pages/TeamPage";
 import { KnowledgePage } from "./pages/KnowledgePage";
+import { EvaluationsPage } from "./pages/EvaluationsPage";
 
 function Splash() {
   return (
@@ -144,6 +145,7 @@ export default function App() {
         <Route path="/tools" element={<RequireAuth><ToolsPage /></RequireAuth>} />
         <Route path="/team" element={<RequireAuth><TeamPage /></RequireAuth>} />
         <Route path="/knowledge" element={<RequireAuth><KnowledgePage /></RequireAuth>} />
+        <Route path="/evaluations" element={<RequireAuth><EvaluationsPage /></RequireAuth>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </SetupGuard>

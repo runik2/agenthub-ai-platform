@@ -17,6 +17,7 @@ import {
   Wrench,
   UsersRound,
   BookOpen,
+  FlaskConical,
   X,
   Command,
 } from "lucide-react";
@@ -40,6 +41,7 @@ const soonNav: { to: string; key?: string; label?: string; icon: typeof Brain }[
   { to: "/tools", key: "nav.tools", icon: Wrench },
   { to: "/team", label: "Команда", icon: UsersRound },
   { to: "/knowledge", label: "База знаний", icon: BookOpen },
+  { to: "/evaluations", label: "Evaluations", icon: FlaskConical },
   { to: "/tasks", key: "nav.tasks", icon: ListChecks },
   { to: "/workflows", key: "nav.workflows", icon: Workflow },
   { to: "/schedules", key: "nav.schedules", icon: CalendarClock },
@@ -83,6 +85,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                           ? "Команда"
                           : location.pathname.startsWith("/knowledge")
                             ? "База знаний"
+                            : location.pathname.startsWith("/evaluations")
+                              ? "Evaluations"
             : t("nav.settings");
 
   const sidebar = (
