@@ -3,11 +3,11 @@ from ipaddress import ip_address
 from urllib.parse import urlparse
 
 import httpx
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, require_roles, workspace_owner_id
+from app.api.deps import get_current_user, require_roles, workspace_owner_id, write_audit
 from app.core.errors import AppError
 from app.db.models import IntegrationRun, IntegrationTool, User
 from app.db.session import get_session
@@ -142,12 +142,14 @@ async def list_tool_templates(user: User = Depends(get_current_user)):
 @router.post("", response_model=ToolOut, status_code=201)
 async def create_tool(
     payload: ToolCreate,
+    request: Request,
     user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
 ):
     validate_target(payload.base_url, payload.allowed_path)
     tool = IntegrationTool(owner_id=workspace_owner_id(user), **payload.model_dump())
     session.add(tool)
+    await write_audit(session, request, user.id, "tool.created", "integration_tool", tool.id)
     await session.commit()
     await session.refresh(tool)
     return tool
@@ -170,6 +172,7 @@ async def list_integration_runs(
 async def update_tool(
     tool_id: str,
     payload: ToolUpdate,
+    request: Request,
     user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
 ):
@@ -178,6 +181,7 @@ async def update_tool(
     validate_target(values.get("base_url", tool.base_url), values.get("allowed_path", tool.allowed_path))
     for key, value in values.items():
         setattr(tool, key, value)
+    await write_audit(session, request, user.id, "tool.updated", "integration_tool", tool.id, values)
     await session.commit()
     await session.refresh(tool)
     return tool
@@ -186,10 +190,13 @@ async def update_tool(
 @router.delete("/{tool_id}", status_code=204)
 async def delete_tool(
     tool_id: str,
+    request: Request,
     user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
 ):
-    await session.delete(await owned_tool(tool_id, user, session))
+    tool = await owned_tool(tool_id, user, session)
+    await session.delete(tool)
+    await write_audit(session, request, user.id, "tool.deleted", "integration_tool", tool_id)
     await session.commit()
 
 

@@ -22,6 +22,10 @@ async def test_tools_are_allowlisted_and_owner_scoped(
     assert tool["base_url"] == TOOL["base_url"]
     assert tool["requires_approval"] is True
 
+    audit = await client.get("/api/v1/logs?page_size=100", headers=auth_headers)
+    assert audit.status_code == 200
+    assert any(item["action"] == "tool.created" for item in audit.json()["items"])
+
     listing = await client.get("/api/v1/tools", headers=auth_headers)
     assert listing.status_code == 200
     assert any(item["id"] == tool["id"] for item in listing.json())
