@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from collections.abc import AsyncIterator
@@ -15,6 +16,7 @@ from app.api.v1.health import router as health_router
 from app.api.v1.router import api_router
 from app.config import get_settings
 from app.core.errors import register_exception_handlers
+from app.core.metrics import metrics
 from app.core.rate_limit import RateLimiter
 from app.db.session import dispose_engine, get_session_factory, init_db
 from app.queue.arq import ArqTaskQueue
@@ -28,12 +30,26 @@ from app.services.tasks import execute_task
 logger = logging.getLogger("agenthub")
 
 
+class JsonFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        payload = {
+            "timestamp": self.formatTime(record, "%Y-%m-%dT%H:%M:%S%z"),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        if record.exc_info:
+            payload["exception"] = self.formatException(record.exc_info)
+        return json.dumps(payload, ensure_ascii=False)
+
+
 def configure_logging() -> None:
     settings = get_settings()
     logging.basicConfig(
         level=settings.log_level.upper(),
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
+    for handler in logging.getLogger().handlers:
+        handler.setFormatter(JsonFormatter())
 
 
 @asynccontextmanager
@@ -136,6 +152,7 @@ def create_app() -> FastAPI:
                 )
         response = await call_next(request)
         duration_ms = round((time.perf_counter() - started) * 1000, 2)
+        metrics.observe_request(request.method, request.url.path, response.status_code, duration_ms)
         response.headers["X-Correlation-ID"] = correlation_id
         response.headers["Server-Timing"] = f"app;dur={duration_ms}"
         if rate_limit:

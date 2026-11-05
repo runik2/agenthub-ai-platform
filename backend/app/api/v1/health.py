@@ -3,9 +3,10 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 
 from app.config import get_settings
+from app.core.metrics import metrics
 from app.db.session import check_database
 
 router = APIRouter(tags=["health"])
@@ -32,3 +33,8 @@ async def ready() -> JSONResponse:
         "version": settings.version,
     }
     return JSONResponse(status_code=200 if database == "ok" else 503, content=payload)
+
+
+@router.get("/metrics", include_in_schema=False)
+async def prometheus_metrics() -> PlainTextResponse:
+    return PlainTextResponse(metrics.render(), media_type="text/plain; version=0.0.4")
