@@ -1,6 +1,8 @@
+import time
 from ipaddress import ip_address
 from urllib.parse import urlparse
 
+import httpx
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -135,3 +137,31 @@ async def delete_tool(
 ):
     await session.delete(await owned_tool(tool_id, user, session))
     await session.commit()
+
+
+@router.post("/{tool_id}/test")
+async def test_tool(
+    tool_id: str,
+    user: User = Depends(require_roles("admin", "manager")),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Perform a side-effect-free HEAD probe against an allowlisted endpoint."""
+    tool = await owned_tool(tool_id, user, session)
+    url = f"{tool.base_url.rstrip('/')}/{tool.allowed_path.lstrip('/')}"
+    started = time.perf_counter()
+    try:
+        async with httpx.AsyncClient(timeout=8, follow_redirects=False) as client:
+            response = await client.head(url)
+        return {
+            "ok": response.status_code < 500,
+            "status_code": response.status_code,
+            "latency_ms": round((time.perf_counter() - started) * 1000),
+            "message": "Endpoint доступен" if response.status_code < 500 else "Endpoint вернул ошибку",
+        }
+    except httpx.HTTPError as exc:
+        return {
+            "ok": False,
+            "status_code": None,
+            "latency_ms": round((time.perf_counter() - started) * 1000),
+            "message": str(exc)[:240] or "Не удалось подключиться",
+        }
