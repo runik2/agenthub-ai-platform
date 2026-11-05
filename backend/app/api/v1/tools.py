@@ -88,14 +88,27 @@ TOOL_TEMPLATES = [
 
 def validate_target(base_url: str, allowed_path: str) -> None:
     parsed = urlparse(base_url)
-    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+    ):
         raise AppError("INVALID_TOOL_URL", "Tool URL must be a public HTTPS URL", 422)
     try:
         if ip_address(parsed.hostname).is_private or ip_address(parsed.hostname).is_loopback:
             raise AppError("INVALID_TOOL_URL", "Private network targets are not allowed", 422)
     except ValueError:
         pass
-    if not allowed_path.startswith("/") or "//" in allowed_path or "://" in allowed_path:
+    if (
+        not allowed_path.startswith("/")
+        or "//" in allowed_path
+        or "://" in allowed_path
+        or "?" in allowed_path
+        or "#" in allowed_path
+    ):
         raise AppError("INVALID_TOOL_PATH", "Allowed path must be a relative path", 422)
 
 

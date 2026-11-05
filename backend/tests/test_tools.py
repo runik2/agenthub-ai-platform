@@ -50,6 +50,12 @@ async def test_tool_refuses_private_or_unbounded_targets(
         "/api/v1/tools", json={**TOOL, "allowed_path": "https://evil.example"}, headers=auth_headers
     )
     assert unsafe_path.status_code == 422
+    secret_in_url = await client.post(
+        "/api/v1/tools",
+        json={**TOOL, "base_url": "https://crm.example.com?token=secret"},
+        headers=auth_headers,
+    )
+    assert secret_in_url.status_code == 422
 
 
 async def test_tool_catalog_contains_safe_starters(
