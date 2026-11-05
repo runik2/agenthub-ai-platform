@@ -3,11 +3,11 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError
-from app.db.models import Agent, Conversation, LLMProvider, LLMUsage, Message, User
+from app.db.models import Agent, AgentMemory, Conversation, LLMProvider, LLMUsage, Message, User
 from app.services import llm
 from app.services.pricing import compute_cost
 
@@ -22,8 +22,12 @@ def _title_from(text: str) -> str:
     return clean[:FALLBACK_NOTICE_LIMIT].rstrip() + "…"
 
 
-def build_history(agent: Agent, messages: list[Message]) -> list[dict[str, str]]:
-    payload: list[dict[str, str]] = [{"role": "system", "content": agent.system_prompt}]
+def build_history(agent: Agent, messages: list[Message], memories: list[AgentMemory]) -> list[dict[str, str]]:
+    memory_context = "\n".join(f"- {memory.content}" for memory in memories)
+    system_prompt = agent.system_prompt
+    if memory_context:
+        system_prompt += f"\n\nRelevant saved facts (use only when useful):\n{memory_context}"
+    payload: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
     for message in messages[-HISTORY_LIMIT:]:
         if message.role in {"user", "assistant"} and message.content:
             payload.append({"role": message.role, "content": message.content})
@@ -65,7 +69,13 @@ async def send_message(
             .order_by(Message.created_at.asc())
         )
     ).all()
-    payload = build_history(agent, list(history_rows))
+    memories = (await session.scalars(
+        select(AgentMemory).where(
+            AgentMemory.owner_id == user.id,
+            or_(AgentMemory.agent_id == agent.id, AgentMemory.agent_id.is_(None)),
+        ).order_by(AgentMemory.is_pinned.desc(), AgentMemory.updated_at.desc()).limit(12)
+    )).all()
+    payload = build_history(agent, list(history_rows), list(memories))
 
     model_name = agent.model_name or provider.default_model
     try:

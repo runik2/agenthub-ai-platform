@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3,
+  Brain,
   Bot,
   CalendarClock,
   ChevronRight,
@@ -31,7 +32,8 @@ const mainNav = [
   { to: "/settings", key: "nav.settings", icon: Settings },
 ];
 
-const soonNav = [
+const soonNav: { to: string; key?: string; label?: string; icon: typeof Brain }[] = [
+  { to: "/memories", label: "Память", icon: Brain },
   { to: "/tasks", key: "nav.tasks", icon: ListChecks },
   { to: "/workflows", key: "nav.workflows", icon: Workflow },
   { to: "/schedules", key: "nav.schedules", icon: CalendarClock },
@@ -67,6 +69,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                   ? t("nav.schedules")
                   : location.pathname.startsWith("/analytics")
                     ? t("nav.analytics")
+                    : location.pathname.startsWith("/memories")
+                      ? "Память"
             : t("nav.settings");
 
   const sidebar = (
@@ -122,10 +126,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         </p>
         <ul className="space-y-1">
           {soonNav.map((item) => (
-            <li key={item.key}>
+            <li key={item.to}>
               {item.to ? <NavLink to={item.to} className="flex items-center gap-2 rounded-lg px-2 py-2 text-[13px] text-muted hover:bg-raised hover:text-ink">
                 <item.icon size={15} />
-                <span className="truncate">{t(item.key)}</span>
+                <span className="truncate">{item.label ?? t(item.key ?? "")}</span>
               </NavLink> : null}
             </li>
           ))}

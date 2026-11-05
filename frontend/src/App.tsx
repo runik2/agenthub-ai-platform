@@ -18,6 +18,7 @@ import { TasksPage } from "./pages/TasksPage";
 import { WorkflowsPage } from "./pages/WorkflowsPage";
 import { SchedulesPage } from "./pages/SchedulesPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
+import { MemoriesPage } from "./pages/MemoriesPage";
 
 function Splash() {
   return (
@@ -134,6 +135,7 @@ export default function App() {
         <Route path="/workflows" element={<RequireAuth><WorkflowsPage /></RequireAuth>} />
         <Route path="/schedules" element={<RequireAuth><SchedulesPage /></RequireAuth>} />
         <Route path="/analytics" element={<RequireAuth><AnalyticsPage /></RequireAuth>} />
+        <Route path="/memories" element={<RequireAuth><MemoriesPage /></RequireAuth>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </SetupGuard>
