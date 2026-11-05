@@ -63,3 +63,7 @@ async def test_workflow_versions_can_restore_previous_configuration(
     latest = await client.get(f"/api/v1/workflows/{workflow_id}/versions", headers=auth_headers)
     assert latest.json()[0]["version"] == 3
     assert latest.json()[0]["note"] == "Back to stable"
+    audit = await client.get("/api/v1/logs?page_size=100", headers=auth_headers)
+    assert audit.status_code == 200
+    actions = {item["action"] for item in audit.json()["items"]}
+    assert {"workflow.created", "workflow.updated", "workflow.version_restored"} <= actions

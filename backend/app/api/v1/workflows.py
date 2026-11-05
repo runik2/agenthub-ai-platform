@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, require_roles, workspace_owner_id
+from app.api.deps import get_current_user, require_roles, workspace_owner_id, write_audit
 from app.db.models import User, Workflow, WorkflowVersion
 from app.db.session import get_session
 from app.queue.runtime import get_queue
@@ -52,6 +52,7 @@ async def list_workflows(
 
 @router.post("", response_model=WorkflowOut, status_code=201)
 async def create_workflow(
+    request: Request,
     payload: WorkflowCreate,
     user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
@@ -60,6 +61,7 @@ async def create_workflow(
     session.add(wf)
     await session.flush()
     await snapshot_workflow(session, wf, user.id, "Initial workflow version")
+    await write_audit(session, request, user.id, "workflow.created", "workflow", wf.id, {"name": wf.name})
     await session.commit()
     await session.refresh(wf)
     return wf
@@ -82,6 +84,7 @@ async def get_workflow(
 @router.put("/{workflow_id}", response_model=WorkflowOut)
 async def update_workflow(
     workflow_id: str,
+    request: Request,
     payload: WorkflowCreate,
     user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
@@ -97,6 +100,7 @@ async def update_workflow(
         setattr(wf, key, value)
     await session.flush()
     await snapshot_workflow(session, wf, user.id, "Workflow updated")
+    await write_audit(session, request, user.id, "workflow.updated", "workflow", wf.id)
     await session.commit()
     await session.refresh(wf)
     return wf
@@ -131,6 +135,7 @@ async def list_workflow_versions(
 async def restore_workflow_version(
     workflow_id: str,
     version_id: str,
+    request: Request,
     payload: WorkflowRestore = WorkflowRestore(),
     user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
@@ -156,6 +161,15 @@ async def restore_workflow_version(
     workflow.steps = version.steps
     await session.flush()
     await snapshot_workflow(session, workflow, user.id, payload.note)
+    await write_audit(
+        session,
+        request,
+        user.id,
+        "workflow.version_restored",
+        "workflow",
+        workflow.id,
+        {"version_id": version.id, "version": version.version},
+    )
     await session.commit()
     await session.refresh(workflow)
     return workflow
@@ -164,6 +178,7 @@ async def restore_workflow_version(
 @router.delete("/{workflow_id}", status_code=204)
 async def delete_workflow(
     workflow_id: str,
+    request: Request,
     user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
 ):
@@ -174,6 +189,7 @@ async def delete_workflow(
         from app.core.errors import AppError
 
         raise AppError("NOT_FOUND", "Workflow not found", 404)
+    await write_audit(session, request, user.id, "workflow.deleted", "workflow", wf.id)
     await session.delete(wf)
     await session.commit()
 
