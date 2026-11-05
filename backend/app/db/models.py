@@ -34,6 +34,8 @@ class User(TimestampMixin, Base):
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     two_factor_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)
     two_factor_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    failed_login_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     agents: Mapped[list[Agent]] = relationship(back_populates="owner")
 

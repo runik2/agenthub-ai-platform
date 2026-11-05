@@ -93,7 +93,23 @@ async def login(
     session: AsyncSession = Depends(get_session),
 ) -> TokenResponse:
     user = await session.scalar(select(User).where(User.email == payload.email.lower()))
+    now = datetime.now(UTC)
+    locked_until = (
+        user.locked_until.replace(tzinfo=UTC)
+        if user and user.locked_until and user.locked_until.tzinfo is None
+        else user.locked_until
+        if user
+        else None
+    )
+    if user and locked_until and locked_until > now:
+        raise AppError("LOGIN_LOCKED", "Too many failed attempts; try again later", 429)
     if user is None or not verify_password(payload.password, user.hashed_password):
+        if user:
+            user.failed_login_count += 1
+            if user.failed_login_count >= 5:
+                user.locked_until = now + timedelta(minutes=15)
+                user.failed_login_count = 0
+        await session.commit()
         raise AppError("INVALID_CREDENTIALS", "Invalid email or password", 401)
     if not user.is_active:
         raise AppError("USER_DISABLED", "This account is disabled", 403)
@@ -103,7 +119,9 @@ async def login(
         or not verify_totp(user.two_factor_secret, payload.otp_code)
     ):
         raise AppError("TWO_FACTOR_REQUIRED", "A valid two-factor code is required", 401)
-    user.last_login_at = datetime.now(UTC)
+    user.failed_login_count = 0
+    user.locked_until = None
+    user.last_login_at = now
     await write_audit(session, request, user.id, "auth.login", "user", user.id)
     await session.commit()
     await session.refresh(user)

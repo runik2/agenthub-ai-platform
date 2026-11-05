@@ -124,6 +124,32 @@ async def test_two_factor_setup_and_login_gate(client: httpx.AsyncClient) -> Non
     assert allowed.status_code == 200
 
 
+async def test_login_is_temporarily_locked_after_five_failures(client: httpx.AsyncClient) -> None:
+    admin = await client.post(
+        "/api/v1/auth/login", json={"email": "admin@test.local", "password": "admin12345"}
+    )
+    created = await client.post(
+        "/api/v1/team",
+        json={
+            "email": "lock-test@example.com",
+            "full_name": "Lock Test",
+            "password": "correct123",
+            "role": "viewer",
+        },
+        headers={"Authorization": f"Bearer {admin.json()['access_token']}"},
+    )
+    assert created.status_code == 201
+    for _ in range(5):
+        failed = await client.post(
+            "/api/v1/auth/login", json={"email": "lock-test@example.com", "password": "wrong-password"}
+        )
+        assert failed.status_code == 401
+    locked = await client.post(
+        "/api/v1/auth/login", json={"email": "lock-test@example.com", "password": "correct123"}
+    )
+    assert locked.status_code == 429
+
+
 async def test_login_with_wrong_password(client: httpx.AsyncClient) -> None:
     response = await client.post(
         "/api/v1/auth/login", json={"email": "admin@test.local", "password": "nope-nope"}
