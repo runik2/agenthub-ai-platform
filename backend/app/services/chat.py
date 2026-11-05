@@ -128,6 +128,13 @@ async def send_message(
         )
     ).all()
     words = [word.lower() for word in content.split() if len(word) > 2][:8]
+    selected_memories = [
+        memory
+        for memory in memories
+        if memory.is_pinned or any(word in memory.content.lower() for word in words)
+    ][:8]
+    if not selected_memories:
+        selected_memories = list(memories[:3])
     knowledge: list[tuple[KnowledgeChunk, str]] = []
     chunk_filters = [
         KnowledgeChunk.owner_id == workspace_owner_id(user),
@@ -174,7 +181,7 @@ async def send_message(
             else {}
         )
         knowledge = [(chunk, titles.get(chunk.document_id, "Knowledge base")) for chunk in chunk_rows]
-    payload = build_history(agent, list(history_rows), list(memories), knowledge)
+    payload = build_history(agent, list(history_rows), selected_memories, knowledge)
 
     budget = await current_budget(session, user)
     if budget["status"] == "exceeded":
@@ -248,6 +255,20 @@ async def send_message(
             "sources": [
                 {"document_id": chunk.document_id, "title": title, "chunk_index": chunk.chunk_index}
                 for chunk, title in knowledge
+            ],
+            "memory_context": [
+                {
+                    "memory_id": memory.id,
+                    "content": memory.content,
+                    "reason": (
+                        "Закреплённый факт"
+                        if memory.is_pinned
+                        else "Совпадение с текстом запроса"
+                        if any(word in memory.content.lower() for word in words)
+                        else "Контекст агента"
+                    ),
+                }
+                for memory in selected_memories
             ],
         },
     )

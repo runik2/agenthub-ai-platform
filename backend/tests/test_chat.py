@@ -129,6 +129,26 @@ async def test_chat_persists_knowledge_citations(
     assert sources and sources[0]["title"] == "Refund policy"
 
 
+async def test_chat_explains_memory_context(
+    client: httpx.AsyncClient, auth_headers: dict[str, str], mock_llm
+) -> None:
+    context = await _prepare(client, auth_headers)
+    memory = await client.post(
+        "/api/v1/memories",
+        json={"content": "The customer prefers concise answers", "agent_id": context["agent"]["id"]},
+        headers=auth_headers,
+    )
+    assert memory.status_code == 201, memory.text
+    response = await client.post(
+        f"/api/v1/conversations/{context['conversation']['id']}/messages",
+        json={"content": "What does the customer prefer?"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    used = response.json()["assistant_message"]["meta"]["memory_context"]
+    assert used and used[0]["reason"] == "Совпадение с текстом запроса"
+
+
 async def test_provider_failure_is_reported_not_swallowed(
     client: httpx.AsyncClient, auth_headers: dict[str, str], mock_llm
 ) -> None:

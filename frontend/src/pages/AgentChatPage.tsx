@@ -2,6 +2,7 @@ import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
+  BrainCircuit,
   MessageSquarePlus,
   Send,
   Trash2,
@@ -266,6 +267,15 @@ export function AgentChatPage() {
                           {message.meta.sources.map((source) => {
                             const item = source as { title?: string; chunk_index?: number };
                             return <span key={`${item.title}-${item.chunk_index}`} className="rounded-md border border-violet/20 bg-violet/10 px-1.5 py-0.5 text-violet">{item.title ?? "Документ"} · {Number(item.chunk_index ?? 0) + 1}</span>;
+                          })}
+                        </div>
+                      ) : null}
+                      {Array.isArray(message.meta.memory_context) && message.meta.memory_context.length > 0 ? (
+                        <div className="flex flex-wrap items-center gap-1.5 px-1 text-[10.5px] text-muted">
+                          <span className="flex items-center gap-1 font-semibold text-accent"><BrainCircuit size={12} /> Память использована:</span>
+                          {message.meta.memory_context.map((memory) => {
+                            const item = memory as { memory_id?: string; content?: string; reason?: string };
+                            return <span key={item.memory_id} title={item.reason ?? "Контекст агента"} className="max-w-[260px] truncate rounded-md border border-accent/20 bg-accent/10 px-1.5 py-0.5 text-accent">{item.content ?? "Факт"} · {item.reason ?? "контекст"}</span>;
                           })}
                         </div>
                       ) : null}
