@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { BookOpen, FileText, Link2, Plus, RefreshCw, Search, Trash2, Upload } from "lucide-react";
+import { useEffect, useState } from "react";
+import { BookOpen, FileText, Link2, Pencil, Plus, RefreshCw, Save, Search, Trash2, Upload, X } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { request } from "../api/client";
@@ -14,6 +14,7 @@ type Document = {
   version: number;
   created_at: string;
 };
+type DocumentDetail = Document & { content: string };
 type Result = { document_id: string; title: string; chunk_index: number; content: string; score: number };
 
 export function KnowledgePage() {
@@ -25,11 +26,16 @@ export function KnowledgePage() {
   const [search, setSearch] = useState("");
   const [url, setUrl] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
+  const [editingContent, setEditingContent] = useState("");
   const agents = useAgents({ page: 1, search: "", status: "" });
   const docs = useQuery({
     queryKey: ["knowledge-documents"],
     queryFn: () => request<Document[]>("/knowledge/documents"),
   });
+  const detail = useQuery({ queryKey: ["knowledge-document", editingId], queryFn: () => request<DocumentDetail>(`/knowledge/documents/${editingId}`), enabled: Boolean(editingId) });
+  useEffect(() => { if (detail.data) { setEditingTitle(detail.data.title); setEditingContent(detail.data.content); } }, [detail.data]);
   const results = useQuery({
     queryKey: ["knowledge-search", search, agentId],
     queryFn: () => request<Result[]>("/knowledge/search", { query: { q: search, agent_id: agentId || undefined } }),
@@ -61,6 +67,7 @@ export function KnowledgePage() {
     mutationFn: (id: string) => request<void>(`/knowledge/documents/${id}`, { method: "DELETE" }),
     onSuccess: invalidate,
   });
+  const update = useMutation({ mutationFn: () => request<Document>(`/knowledge/documents/${editingId}`, { method: "PATCH", body: { title: editingTitle, content: editingContent } }), onSuccess: () => { setEditingId(null); invalidate(); } });
 
   return <div className="mx-auto max-w-6xl space-y-5">
     <section className="relative overflow-hidden rounded-2xl border border-violet/20 bg-gradient-to-br from-violet/[.14] via-card to-accent/[.08] p-6">
@@ -80,7 +87,8 @@ export function KnowledgePage() {
       <Card className="min-h-[450px]">
         <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[11px] font-bold uppercase tracking-wider text-muted">Источники</p><h2 className="mt-1 font-semibold text-ink">Индекс знаний</h2></div><div className="relative w-full sm:w-72"><Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={15} /><Input value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => event.key === "Enter" && setSearch(query)} placeholder="Поиск по знаниям · Enter" className="pl-9" /></div></div>
         {search ? <div className="mt-4 space-y-2 rounded-xl border border-accent/20 bg-accent/[.04] p-3"><p className="text-[11px] font-semibold uppercase tracking-wider text-accent">Релевантные фрагменты</p>{results.data?.map(result => <div key={`${result.document_id}-${result.chunk_index}`} className="rounded-lg border border-line bg-card p-3"><div className="flex items-center gap-2"><FileText size={13} className="text-accent" /><span className="text-xs font-semibold text-ink">{result.title} · фрагмент {result.chunk_index + 1}</span><Badge tone="accent">score {result.score}</Badge></div><p className="mt-2 text-sm leading-relaxed text-muted">{result.content}</p></div>) ?? <p className="py-4 text-center text-sm text-muted">Ищем…</p>}</div> : null}
-        <div className="mt-5 space-y-2">{docs.data?.map(doc => <article key={doc.id} className="flex items-center gap-3 rounded-xl border border-line bg-card/50 p-4"><span className="grid h-9 w-9 place-items-center rounded-xl bg-violet/10 text-violet"><FileText size={16} /></span><div className="min-w-0 flex-1"><p className="truncate font-semibold text-ink">{doc.title}</p><p className="text-xs text-muted">v{doc.version} · {doc.chunk_count} чанков · {doc.agent_id ? "для выбранного агента" : "общий источник"}</p></div><IconButton label="Переиндексировать" onClick={() => reindex.mutate(doc.id)}><RefreshCw size={14} className={reindex.isPending ? "animate-spin" : ""} /></IconButton><IconButton label="Удалить источник" tone="danger" onClick={() => remove.mutate(doc.id)}><Trash2 size={14} /></IconButton></article>)}{!docs.data?.length && !docs.isLoading ? <div className="py-16 text-center"><BookOpen className="mx-auto text-muted/50" size={34} /><p className="mt-3 font-medium text-ink">База знаний пока пуста</p></div> : null}</div>
+        {editingId ? <div className="mt-5 space-y-3 rounded-xl border border-accent/25 bg-accent/[.04] p-4"><div className="flex items-center justify-between"><div><p className="text-[11px] font-bold uppercase tracking-wider text-accent">Новая версия источника</p><h3 className="font-semibold text-ink">Редактирование документа</h3></div><IconButton label="Закрыть" onClick={() => setEditingId(null)}><X size={14} /></IconButton></div><Input value={editingTitle} onChange={event => setEditingTitle(event.target.value)} /><Textarea value={editingContent} onChange={event => setEditingContent(event.target.value)} className="min-h-40" /><Button disabled={!editingTitle.trim() || !editingContent.trim()} loading={update.isPending} onClick={() => update.mutate()}><Save size={14} /> Сохранить новую версию</Button></div> : null}
+        <div className="mt-5 space-y-2">{docs.data?.map(doc => <article key={doc.id} className="flex items-center gap-3 rounded-xl border border-line bg-card/50 p-4"><span className="grid h-9 w-9 place-items-center rounded-xl bg-violet/10 text-violet"><FileText size={16} /></span><div className="min-w-0 flex-1"><p className="truncate font-semibold text-ink">{doc.title}</p><p className="text-xs text-muted">v{doc.version} · {doc.chunk_count} чанков · {doc.agent_id ? "для выбранного агента" : "общий источник"}</p></div><IconButton label="Редактировать" onClick={() => setEditingId(doc.id)}><Pencil size={14} /></IconButton><IconButton label="Переиндексировать" onClick={() => reindex.mutate(doc.id)}><RefreshCw size={14} className={reindex.isPending ? "animate-spin" : ""} /></IconButton><IconButton label="Удалить источник" tone="danger" onClick={() => remove.mutate(doc.id)}><Trash2 size={14} /></IconButton></article>)}{!docs.data?.length && !docs.isLoading ? <div className="py-16 text-center"><BookOpen className="mx-auto text-muted/50" size={34} /><p className="mt-3 font-medium text-ink">База знаний пока пуста</p></div> : null}</div>
       </Card>
     </div>
   </div>;

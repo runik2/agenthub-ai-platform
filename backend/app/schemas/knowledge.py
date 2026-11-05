@@ -9,6 +9,11 @@ class DocumentCreate(BaseModel):
     agent_id: str | None = None
 
 
+class DocumentUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    content: str | None = Field(default=None, min_length=1, max_length=200_000)
+
+
 class DocumentOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -19,6 +24,10 @@ class DocumentOut(BaseModel):
     version: int
     created_at: datetime
     updated_at: datetime
+
+
+class DocumentDetail(DocumentOut):
+    content: str
 
 
 class SearchResult(BaseModel):

@@ -149,6 +149,29 @@ async def test_chat_explains_memory_context(
     assert used and used[0]["reason"] == "Совпадение с текстом запроса"
 
 
+async def test_knowledge_edit_creates_new_version(
+    client: httpx.AsyncClient, auth_headers: dict[str, str]
+) -> None:
+    created = await client.post(
+        "/api/v1/knowledge/documents",
+        json={"title": "Editable policy", "content": "Version one"},
+        headers=auth_headers,
+    )
+    assert created.status_code == 201, created.text
+    document_id = created.json()["id"]
+    updated = await client.patch(
+        f"/api/v1/knowledge/documents/{document_id}",
+        json={"content": "Version two with updated rules"},
+        headers=auth_headers,
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["version"] == 2
+    versions = await client.get(
+        f"/api/v1/knowledge/documents/{document_id}/versions", headers=auth_headers
+    )
+    assert [item["version"] for item in versions.json()] == [2, 1]
+
+
 async def test_provider_failure_is_reported_not_swallowed(
     client: httpx.AsyncClient, auth_headers: dict[str, str], mock_llm
 ) -> None:

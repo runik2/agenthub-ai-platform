@@ -19,7 +19,14 @@ from app.db.models import (
     User,
 )
 from app.db.session import get_session
-from app.schemas.knowledge import DocumentCreate, DocumentOut, DocumentVersionOut, SearchResult
+from app.schemas.knowledge import (
+    DocumentCreate,
+    DocumentDetail,
+    DocumentOut,
+    DocumentUpdate,
+    DocumentVersionOut,
+    SearchResult,
+)
 from app.services import embeddings
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
@@ -116,6 +123,72 @@ async def create_document(
     document = await index_document(payload.title, payload.content, payload.agent_id, user, session)
     await session.commit()
     await session.refresh(document)
+    return document
+
+
+@router.patch("/documents/{document_id}", response_model=DocumentOut)
+async def update_document(
+    document_id: str,
+    payload: DocumentUpdate,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    document = await session.scalar(
+        select(KnowledgeDocument).where(
+            KnowledgeDocument.id == document_id,
+            KnowledgeDocument.owner_id == workspace_owner_id(user),
+        )
+    )
+    if not document:
+        raise AppError("DOCUMENT_NOT_FOUND", "Knowledge document not found", 404)
+    values = payload.model_dump(exclude_unset=True)
+    if "title" in values:
+        document.title = values["title"]
+    if "content" in values:
+        document.content = values["content"]
+        chunks = split_chunks(document.content)
+        vectors = await chunk_embeddings(document.agent_id, chunks, session)
+        document.version += 1
+        document.chunk_count = len(chunks)
+        await session.execute(delete(KnowledgeChunk).where(KnowledgeChunk.document_id == document.id))
+        session.add(
+            KnowledgeDocumentVersion(
+                document_id=document.id,
+                version=document.version,
+                content=document.content,
+                chunk_count=len(chunks),
+            )
+        )
+        for index, chunk in enumerate(chunks):
+            session.add(
+                KnowledgeChunk(
+                    document_id=document.id,
+                    owner_id=document.owner_id,
+                    agent_id=document.agent_id,
+                    chunk_index=index,
+                    content=chunk,
+                    embedding=vectors[index],
+                )
+            )
+    await session.commit()
+    await session.refresh(document)
+    return document
+
+
+@router.get("/documents/{document_id}", response_model=DocumentDetail)
+async def get_document(
+    document_id: str,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    document = await session.scalar(
+        select(KnowledgeDocument).where(
+            KnowledgeDocument.id == document_id,
+            KnowledgeDocument.owner_id == workspace_owner_id(user),
+        )
+    )
+    if not document:
+        raise AppError("DOCUMENT_NOT_FOUND", "Knowledge document not found", 404)
     return document
 
 
