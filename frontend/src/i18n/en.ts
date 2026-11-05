@@ -37,6 +37,7 @@ export const en: Dict = {
     no: "No",
     total: "total",
     nothingYet: "nothing yet",
+    viewAll: "View all",
   },
   nav: {
     main: "Main",
@@ -88,7 +89,10 @@ export const en: Dict = {
   },
   dashboard: {
     title: "Dashboard",
+    eyebrow: "Workspace overview",
     subtitle: "Summary for the last {days} days",
+    newAgent: "Create agent",
+    connectProvider: "Connect model",
     range7: "7 days",
     range30: "30 days",
     agents: "Agents",

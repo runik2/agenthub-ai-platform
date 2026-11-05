@@ -35,6 +35,7 @@ export const ru = {
     no: "Нет",
     total: "всего",
     nothingYet: "пока пусто",
+    viewAll: "Смотреть всё",
   },
   nav: {
     main: "Основное",
@@ -86,7 +87,10 @@ export const ru = {
   },
   dashboard: {
     title: "Дашборд",
+    eyebrow: "Рабочее пространство",
     subtitle: "Сводка за последние {days} дней",
+    newAgent: "Создать агента",
+    connectProvider: "Подключить модель",
     range7: "7 дней",
     range30: "30 дней",
     agents: "Агенты",

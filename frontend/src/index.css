@@ -4,14 +4,14 @@
 
 @layer base {
   :root {
-    --canvas: #f5f7fb;
+    --canvas: #f6f8fc;
     --sidebar: #ffffff;
     --card: #ffffff;
     --raised: #eef2f9;
     --line: #e2e8f0;
     --ink: #0f172a;
     --muted: #64748b;
-    --accent: #3b82f6;
+    --accent: #2563eb;
     --violet: #8b5cf6;
     --success: #22c55e;
     --danger: #ef4444;
@@ -20,14 +20,14 @@
   }
 
   .dark {
-    --canvas: #0b1120;
+    --canvas: #0a0f1d;
     --sidebar: #101827;
     --card: #151f30;
     --raised: #1b2740;
     --line: #263449;
     --ink: #f1f5f9;
     --muted: #94a3b8;
-    --accent: #3b82f6;
+    --accent: #4f8cff;
     --violet: #8b5cf6;
     --success: #22c55e;
     --danger: #ef4444;
@@ -45,6 +45,7 @@
     @apply bg-canvas text-ink antialiased;
     font-size: 14px;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    background-image: radial-gradient(circle at 80% -10%, rgba(79, 140, 255, 0.08), transparent 34rem);
   }
 
   ::selection {
@@ -74,7 +75,15 @@
 
 @layer components {
   .surface {
-    @apply bg-card border border-line rounded-xl;
+    @apply rounded-2xl border border-line bg-card;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.035);
+    transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+  }
+
+  .surface-hover:hover {
+    border-color: color-mix(in srgb, var(--accent) 38%, var(--line));
+    box-shadow: 0 14px 30px rgba(15, 23, 42, 0.08);
+    transform: translateY(-1px);
   }
 
   .tabular {

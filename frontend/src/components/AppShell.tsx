@@ -14,6 +14,7 @@ import {
   Settings,
   Workflow,
   X,
+  Command,
 } from "lucide-react";
 
 import { useLogout, useMe } from "../api/hooks";
@@ -69,14 +70,14 @@ export function AppShell({ children }: { children: ReactNode }) {
             : t("nav.settings");
 
   const sidebar = (
-    <div className="flex h-full w-[248px] shrink-0 flex-col border-r border-line bg-sidebar">
-      <div className="flex h-14 items-center gap-2 border-b border-line px-4">
-        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-accent to-violet text-[13px] font-bold text-white">
-          A
+    <div className="flex h-full w-[260px] shrink-0 flex-col border-r border-line bg-sidebar/95">
+      <div className="flex h-16 items-center gap-2.5 border-b border-line px-4">
+        <span className="relative flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-accent via-blue-500 to-violet text-[13px] font-bold text-white shadow-lg shadow-accent/20">
+          <span className="absolute inset-1 rounded-lg border border-white/30" />A
         </span>
         <div className="min-w-0">
           <p className="truncate text-[13px] font-semibold tracking-tight text-ink">AgentHub</p>
-          <p className="truncate text-[10px] uppercase tracking-wider text-muted">{t("app.tagline")}</p>
+          <p className="truncate text-[10px] uppercase tracking-[0.12em] text-muted">{t("app.tagline")}</p>
         </div>
         <button
           type="button"
@@ -92,7 +93,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <p className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted/80">
           {t("nav.main")}
         </p>
-        <ul className="space-y-0.5">
+        <ul className="space-y-1">
           {mainNav
             .filter((item) => !item.admin || user?.role === "admin")
             .map((item) => (
@@ -119,7 +120,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <p className="mt-5 px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted/80">
           {t("nav.upcoming")}
         </p>
-        <ul className="space-y-0.5">
+        <ul className="space-y-1">
           {soonNav.map((item) => (
             <li key={item.key}>
               {item.to ? <NavLink to={item.to} className="flex items-center gap-2 rounded-lg px-2 py-2 text-[13px] text-muted hover:bg-raised hover:text-ink">
@@ -188,6 +189,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span className="truncate font-medium text-ink">{title}</span>
           </div>
           <div className="ml-auto flex items-center gap-2">
+            <div className="hidden items-center gap-1 rounded-lg border border-line bg-card/70 px-2 py-1 text-[10px] text-muted xl:flex">
+              <Command size={11} /> K
+            </div>
             <LanguageToggle />
             <ThemeToggle />
           </div>

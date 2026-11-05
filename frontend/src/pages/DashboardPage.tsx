@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { Activity, AlertTriangle, Bot, Coins, MessagesSquare } from "lucide-react";
+import { Activity, AlertTriangle, Bot, Coins, MessagesSquare, ArrowUpRight, Plus, PlugZap, Sparkles } from "lucide-react";
+import { Link } from "react-router-dom";
 
 import { useOverview } from "../api/hooks";
 import { Badge, Card, EmptyState, Segmented, Skeleton, Table, Td, Th } from "../components/ui";
@@ -117,19 +118,27 @@ export function DashboardPage() {
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-xl font-semibold tracking-tight text-ink">{t("dashboard.title")}</h1>
-          <p className="mt-0.5 text-[13px] text-muted">{t("dashboard.subtitle", { days })}</p>
+      <div className="relative overflow-hidden rounded-2xl border border-accent/20 bg-gradient-to-br from-accent/[.12] via-card to-violet/[.10] p-5 sm:p-6">
+        <div className="absolute -right-16 -top-20 h-56 w-56 rounded-full bg-accent/10 blur-3xl" />
+        <div className="relative flex flex-wrap items-end justify-between gap-5">
+          <div className="min-w-0">
+            <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-accent"><Sparkles size={13} /> {t("dashboard.eyebrow")}</div>
+            <h1 className="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">{t("dashboard.title")}</h1>
+            <p className="mt-1 max-w-xl text-[13px] leading-relaxed text-muted">{t("dashboard.subtitle", { days })}</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link to="/agents/new" className="inline-flex h-9 items-center gap-2 rounded-xl bg-accent px-3.5 text-xs font-semibold text-white shadow-lg shadow-accent/20 transition hover:bg-accent/90"><Plus size={14} /> {t("dashboard.newAgent")}</Link>
+            <Link to="/providers" className="inline-flex h-9 items-center gap-2 rounded-xl border border-line bg-card/80 px-3.5 text-xs font-semibold text-ink transition hover:border-accent/50"><PlugZap size={14} /> {t("dashboard.connectProvider")}</Link>
+            <Segmented
+              value={days}
+              onChange={setDays}
+              options={[
+                { value: 7, label: t("dashboard.range7") },
+                { value: 30, label: t("dashboard.range30") },
+              ]}
+            />
+          </div>
         </div>
-        <Segmented
-          value={days}
-          onChange={setDays}
-          options={[
-            { value: 7, label: t("dashboard.range7") },
-            { value: 30, label: t("dashboard.range30") },
-          ]}
-        />
       </div>
 
       {overview.isLoading ? (
@@ -185,8 +194,8 @@ export function DashboardPage() {
       </Card>
 
       <div className="grid gap-3 lg:grid-cols-2">
-        <Card className="space-y-2">
-          <h2 className="text-sm font-semibold text-ink">{t("dashboard.topAgents")}</h2>
+        <Card className="surface-hover space-y-2">
+          <div className="flex items-center justify-between"><h2 className="text-sm font-semibold text-ink">{t("dashboard.topAgents")}</h2><Link to="/agents" className="inline-flex items-center gap-1 text-[11px] font-medium text-accent hover:underline">{t("common.viewAll")} <ArrowUpRight size={12} /></Link></div>
           {overview.isLoading ? (
             <Skeleton className="h-32" />
           ) : data && data.top_agents.length > 0 ? (
@@ -221,8 +230,8 @@ export function DashboardPage() {
           )}
         </Card>
 
-        <Card className="space-y-2">
-          <h2 className="text-sm font-semibold text-ink">{t("dashboard.providers")}</h2>
+        <Card className="surface-hover space-y-2">
+          <div className="flex items-center justify-between"><h2 className="text-sm font-semibold text-ink">{t("dashboard.providers")}</h2><Link to="/providers" className="inline-flex items-center gap-1 text-[11px] font-medium text-accent hover:underline">{t("common.viewAll")} <ArrowUpRight size={12} /></Link></div>
           {overview.isLoading ? (
             <Skeleton className="h-32" />
           ) : data && data.providers.length > 0 ? (

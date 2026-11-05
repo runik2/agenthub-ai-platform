@@ -38,7 +38,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       ref={ref}
       disabled={disabled || loading}
       className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors",
+        "inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-all active:scale-[.98]",
         size === "sm" ? "h-8 px-3 text-[13px]" : "h-10 px-4 text-sm",
         buttonVariants[variant],
         className,
@@ -134,7 +134,7 @@ export function Field({
 /* ---------------------------------- cards --------------------------------- */
 
 export function Card({ className, children }: { className?: string; children: ReactNode }) {
-  return <div className={cn("surface p-4 shadow-card", className)}>{children}</div>;
+  return <div className={cn("surface p-5", className)}>{children}</div>;
 }
 
 type BadgeTone = "neutral" | "success" | "danger" | "warning" | "accent" | "violet";

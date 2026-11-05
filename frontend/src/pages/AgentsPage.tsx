@@ -114,7 +114,7 @@ export function AgentsPage() {
         <>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {agents.data.items.map((agent) => (
-              <Card key={agent.id} className="flex flex-col gap-3 p-4">
+              <Card key={agent.id} className="surface-hover flex flex-col gap-3 p-4">
                 <div className="flex items-start gap-3">
                   <span
                     className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[12px] font-semibold text-white"
