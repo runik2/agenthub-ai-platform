@@ -7,7 +7,17 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError
-from app.db.models import Agent, AgentMemory, Conversation, LLMProvider, LLMUsage, Message, User
+from app.db.models import (
+    Agent,
+    AgentMemory,
+    Conversation,
+    KnowledgeChunk,
+    KnowledgeDocument,
+    LLMProvider,
+    LLMUsage,
+    Message,
+    User,
+)
 from app.services import llm
 from app.services.pricing import compute_cost
 
@@ -22,11 +32,25 @@ def _title_from(text: str) -> str:
     return clean[:FALLBACK_NOTICE_LIMIT].rstrip() + "…"
 
 
-def build_history(agent: Agent, messages: list[Message], memories: list[AgentMemory]) -> list[dict[str, str]]:
+def build_history(
+    agent: Agent,
+    messages: list[Message],
+    memories: list[AgentMemory],
+    knowledge: list[tuple[KnowledgeChunk, str]] | None = None,
+) -> list[dict[str, str]]:
     memory_context = "\n".join(f"- {memory.content}" for memory in memories)
     system_prompt = agent.system_prompt
     if memory_context:
         system_prompt += f"\n\nRelevant saved facts (use only when useful):\n{memory_context}"
+    if knowledge:
+        source_context = "\n".join(
+            f"[{title} · chunk {chunk.chunk_index + 1}] {chunk.content}"
+            for chunk, title in knowledge
+        )
+        system_prompt += (
+            "\n\nKnowledge base excerpts (cite the source title when relevant; "
+            f"do not invent details):\n{source_context}"
+        )
     payload: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
     for message in messages[-HISTORY_LIMIT:]:
         if message.role in {"user", "assistant"} and message.content:
@@ -75,7 +99,25 @@ async def send_message(
             or_(AgentMemory.agent_id == agent.id, AgentMemory.agent_id.is_(None)),
         ).order_by(AgentMemory.is_pinned.desc(), AgentMemory.updated_at.desc()).limit(12)
     )).all()
-    payload = build_history(agent, list(history_rows), list(memories))
+    words = [word.lower() for word in content.split() if len(word) > 2][:8]
+    knowledge: list[tuple[KnowledgeChunk, str]] = []
+    if words:
+        matches = or_(*(KnowledgeChunk.content.ilike(f"%{word}%") for word in words))
+        chunk_rows = list((await session.scalars(
+            select(KnowledgeChunk).where(
+                KnowledgeChunk.owner_id == user.id,
+                or_(KnowledgeChunk.agent_id == agent.id, KnowledgeChunk.agent_id.is_(None)),
+                matches,
+            ).limit(6)
+        )).all())
+        document_ids = {chunk.document_id for chunk in chunk_rows}
+        titles = dict((await session.execute(
+            select(KnowledgeDocument.id, KnowledgeDocument.title).where(
+                KnowledgeDocument.id.in_(document_ids)
+            )
+        )).all()) if document_ids else {}
+        knowledge = [(chunk, titles.get(chunk.document_id, "Knowledge base")) for chunk in chunk_rows]
+    payload = build_history(agent, list(history_rows), list(memories), knowledge)
 
     model_name = agent.model_name or provider.default_model
     try:
