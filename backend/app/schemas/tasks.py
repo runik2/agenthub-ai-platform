@@ -65,6 +65,25 @@ class WorkflowOut(WorkflowCreate):
     created_at: datetime
 
 
+class WorkflowVersionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    workflow_id: str
+    owner_id: str
+    version: int
+    name: str
+    description: str
+    steps: list[Step]
+    enabled: bool
+    note: str
+    created_by: str | None = None
+    created_at: datetime
+
+
+class WorkflowRestore(BaseModel):
+    note: str = Field(default="Restored from workflow history", max_length=255)
+
+
 class ScheduleCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     workflow_id: str

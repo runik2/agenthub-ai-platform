@@ -1,56 +1,688 @@
 import { useEffect, useMemo, useState, type DragEvent } from "react";
-import { ArrowDown, CheckCircle2, GitBranch, GripVertical, Play, Plus, Save, Sparkles, Trash2, Workflow } from "lucide-react";
+import {
+  ArrowDown,
+  CheckCircle2,
+  GitBranch,
+  GripVertical,
+  Play,
+  Plus,
+  Save,
+  Sparkles,
+  Trash2,
+  Workflow,
+} from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { request } from "../api/client";
 import { useAgents } from "../api/hooks";
-import { Badge, Button, Card, Field, IconButton, Input, Select } from "../components/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  Field,
+  IconButton,
+  Input,
+  Select,
+} from "../components/ui";
 
 type StepType = "agent" | "tool" | "condition" | "approval" | "parallel";
-type Step = { id: string; type: StepType; agent_id?: string; prompt?: string; tool?: string; tool_id?: string; template?: string; condition?: string | { type?: string; value?: string }; branch?: string; on_true?: string; on_false?: string; retries?: number; timeout_seconds?: number; branches?: { name: string; steps: Step[] }[] };
-type Tool = { id: string; name: string; method: string; requires_approval: boolean };
-type WorkflowData = { id: string; name: string; description: string; enabled: boolean; steps: Step[] };
+type Step = {
+  id: string;
+  type: StepType;
+  agent_id?: string;
+  prompt?: string;
+  tool?: string;
+  tool_id?: string;
+  template?: string;
+  condition?: string | { type?: string; value?: string };
+  branch?: string;
+  on_true?: string;
+  on_false?: string;
+  retries?: number;
+  timeout_seconds?: number;
+  branches?: { name: string; steps: Step[] }[];
+};
+type Tool = {
+  id: string;
+  name: string;
+  method: string;
+  requires_approval: boolean;
+};
+type WorkflowData = {
+  id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  steps: Step[];
+};
+type WorkflowVersion = WorkflowData & {
+  id: string;
+  workflow_id: string;
+  version: number;
+  note: string;
+  created_at: string;
+};
 
-const labels: Record<StepType, string> = { agent: "AI-агент", tool: "Инструмент", condition: "Условие", approval: "Подтверждение", parallel: "Параллельно" };
-const makeStep = (type: StepType): Step => type === "parallel" ? { id: crypto.randomUUID(), type, branches: [{ name: "Ветка A", steps: [{ id: crypto.randomUUID(), type: "tool", tool: "text_template", template: "A: {input}" }] }, { name: "Ветка B", steps: [{ id: crypto.randomUUID(), type: "tool", tool: "text_template", template: "B: {input}" }] }] } : ({ id: crypto.randomUUID(), type, prompt: "Обработай входные данные: {input}" });
+const labels: Record<StepType, string> = {
+  agent: "AI-агент",
+  tool: "Инструмент",
+  condition: "Условие",
+  approval: "Подтверждение",
+  parallel: "Параллельно",
+};
+const makeStep = (type: StepType): Step =>
+  type === "parallel"
+    ? {
+        id: crypto.randomUUID(),
+        type,
+        branches: [
+          {
+            name: "Ветка A",
+            steps: [
+              {
+                id: crypto.randomUUID(),
+                type: "tool",
+                tool: "text_template",
+                template: "A: {input}",
+              },
+            ],
+          },
+          {
+            name: "Ветка B",
+            steps: [
+              {
+                id: crypto.randomUUID(),
+                type: "tool",
+                tool: "text_template",
+                template: "B: {input}",
+              },
+            ],
+          },
+        ],
+      }
+    : {
+        id: crypto.randomUUID(),
+        type,
+        prompt: "Обработай входные данные: {input}",
+      };
 
-function EditorStep({ step, index, agents, tools, update, remove }: { step: Step; index: number; agents: any[]; tools: Tool[]; update: (step: Step) => void; remove: () => void }) {
-  const tone = step.type === "approval" ? "danger" : step.type === "condition" ? "warning" : step.type === "tool" ? "violet" : step.type === "parallel" ? "success" : "accent";
+function EditorStep({
+  step,
+  index,
+  agents,
+  tools,
+  update,
+  remove,
+}: {
+  step: Step;
+  index: number;
+  agents: any[];
+  tools: Tool[];
+  update: (step: Step) => void;
+  remove: () => void;
+}) {
+  const tone =
+    step.type === "approval"
+      ? "danger"
+      : step.type === "condition"
+        ? "warning"
+        : step.type === "tool"
+          ? "violet"
+          : step.type === "parallel"
+            ? "success"
+            : "accent";
   const drop = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
-    window.dispatchEvent(new CustomEvent("agenthub-step-drop", { detail: { fromId: event.dataTransfer.getData("text/plain"), toId: step.id } }));
+    window.dispatchEvent(
+      new CustomEvent("agenthub-step-drop", {
+        detail: {
+          fromId: event.dataTransfer.getData("text/plain"),
+          toId: step.id,
+        },
+      }),
+    );
   };
-  return <div draggable data-step-id={step.id} onDragStart={event => event.dataTransfer.setData("text/plain", step.id)} onDragOver={event => event.preventDefault()} onDrop={drop} className="cursor-grab transition-opacity hover:opacity-90"><Card className="space-y-3 p-4"><div className="flex items-center gap-3"><GripVertical className="shrink-0 text-muted" size={16} aria-label="Перетащить шаг" /><span className="grid h-8 w-8 place-items-center rounded-xl bg-accent/10 text-xs font-bold text-accent">{index + 1}</span><div className="min-w-0 flex-1"><p className="font-semibold text-ink">{labels[step.type]}</p><p className="text-[11px] text-muted">{step.type === "approval" ? "Остановка до решения оператора" : "Вход предыдущего шага → результат"}</p></div><Badge tone={tone}>{step.type}</Badge><IconButton label="Удалить шаг" tone="danger" onClick={remove}><Trash2 size={14} /></IconButton></div>
-    {step.type === "agent" ? <div className="grid gap-3 sm:grid-cols-2"><Field label="Агент"><Select value={step.agent_id ?? ""} onChange={e => update({ ...step, agent_id: e.target.value || undefined })}><option value="">Выберите агента</option>{agents.map(agent => <option value={agent.id} key={agent.id}>{agent.name}</option>)}</Select></Field><Field label="Инструкция"><Input value={step.prompt ?? ""} onChange={e => update({ ...step, prompt: e.target.value })} /></Field></div> : null}
-    {step.type === "tool" ? <div className="grid gap-3 sm:grid-cols-2"><Field label="Разрешённый инструмент"><Select value={step.tool_id ?? ""} onChange={e => update({ ...step, tool_id: e.target.value || undefined, tool: e.target.value ? "integration" : "text_template" })}><option value="">Встроенный текстовый инструмент</option>{tools.map(tool => <option value={tool.id} key={tool.id}>{tool.name} · {tool.method}{tool.requires_approval ? " · approval" : ""}</option>)}</Select></Field><Field label="Шаблон"><Input value={step.template ?? "{input}"} onChange={e => update({ ...step, template: e.target.value })} /></Field></div> : null}
-    {step.type === "condition" ? <div className="grid gap-3 sm:grid-cols-3"><Field label="Если содержит"><Input value={typeof step.condition === "string" ? step.condition : step.condition?.value ?? ""} placeholder="например: approved" onChange={e => update({ ...step, condition: { type: "if_contains", value: e.target.value } })} /></Field><Field label="Ветка да"><Input value={step.on_true ?? "true"} onChange={e => update({ ...step, on_true: e.target.value })} /></Field><Field label="Ветка нет"><Input value={step.on_false ?? "false"} onChange={e => update({ ...step, on_false: e.target.value })} /></Field></div> : null}
-    {step.type === "parallel" ? <div className="space-y-2 rounded-xl border border-success/20 bg-success/[.04] p-3"><p className="text-xs font-semibold text-ink">Ветки выполняются одновременно, затем результаты объединяются в JSON.</p>{(step.branches ?? []).map((branch, branchIndex) => <div className="grid gap-2 sm:grid-cols-[150px_1fr]" key={`${step.id}-${branchIndex}`}><Input value={branch.name} onChange={e => update({ ...step, branches: (step.branches ?? []).map((item, index) => index === branchIndex ? { ...item, name: e.target.value } : item) })} /><Input value={branch.steps[0]?.template ?? "{input}"} onChange={e => update({ ...step, branches: (step.branches ?? []).map((item, index) => index === branchIndex ? { ...item, steps: [{ id: item.steps[0]?.id ?? crypto.randomUUID(), type: "tool", tool: "text_template", template: e.target.value }] } : item) })} /></div>)}</div> : null}
-    {step.type !== "condition" && step.type !== "approval" && step.type !== "parallel" ? <><div className="grid gap-3 sm:grid-cols-3"><Field label="Ветка (необязательно)"><Input value={step.branch ?? ""} placeholder="например: approved" onChange={e => update({ ...step, branch: e.target.value || undefined })} /></Field><Field label="Повторы"><Input type="number" min="0" max="3" value={step.retries ?? 0} onChange={e => update({ ...step, retries: Math.min(3, Math.max(0, Number(e.target.value) || 0)) })} /></Field><Field label="Timeout, сек"><Input type="number" min="1" max="120" value={step.timeout_seconds ?? 15} onChange={e => update({ ...step, timeout_seconds: Math.min(120, Math.max(1, Number(e.target.value) || 15)) })} /></Field></div><p className="text-[11px] text-muted">Для HTTP-интеграций: до 3 повторов с короткой backoff-паузой и таймаутом 1–120 секунд.</p></> : null}
-    {step.type === "approval" ? <div className="rounded-xl border border-warning/30 bg-warning/10 px-3 py-3 text-sm text-ink"><CheckCircle2 className="mr-2 inline text-warning" size={16} /><b>Human-in-the-loop.</b> Задача попадёт в очередь подтверждений до запуска workflow.</div> : null}
-  </Card></div>;
+  return (
+    <div
+      draggable
+      data-step-id={step.id}
+      onDragStart={(event) => event.dataTransfer.setData("text/plain", step.id)}
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={drop}
+      className="cursor-grab transition-opacity hover:opacity-90"
+    >
+      <Card className="space-y-3 p-4">
+        <div className="flex items-center gap-3">
+          <GripVertical
+            className="shrink-0 text-muted"
+            size={16}
+            aria-label="Перетащить шаг"
+          />
+          <span className="grid h-8 w-8 place-items-center rounded-xl bg-accent/10 text-xs font-bold text-accent">
+            {index + 1}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold text-ink">{labels[step.type]}</p>
+            <p className="text-[11px] text-muted">
+              {step.type === "approval"
+                ? "Остановка до решения оператора"
+                : "Вход предыдущего шага → результат"}
+            </p>
+          </div>
+          <Badge tone={tone}>{step.type}</Badge>
+          <IconButton label="Удалить шаг" tone="danger" onClick={remove}>
+            <Trash2 size={14} />
+          </IconButton>
+        </div>
+        {step.type === "agent" ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Агент">
+              <Select
+                value={step.agent_id ?? ""}
+                onChange={(e) =>
+                  update({ ...step, agent_id: e.target.value || undefined })
+                }
+              >
+                <option value="">Выберите агента</option>
+                {agents.map((agent) => (
+                  <option value={agent.id} key={agent.id}>
+                    {agent.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Инструкция">
+              <Input
+                value={step.prompt ?? ""}
+                onChange={(e) => update({ ...step, prompt: e.target.value })}
+              />
+            </Field>
+          </div>
+        ) : null}
+        {step.type === "tool" ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Разрешённый инструмент">
+              <Select
+                value={step.tool_id ?? ""}
+                onChange={(e) =>
+                  update({
+                    ...step,
+                    tool_id: e.target.value || undefined,
+                    tool: e.target.value ? "integration" : "text_template",
+                  })
+                }
+              >
+                <option value="">Встроенный текстовый инструмент</option>
+                {tools.map((tool) => (
+                  <option value={tool.id} key={tool.id}>
+                    {tool.name} · {tool.method}
+                    {tool.requires_approval ? " · approval" : ""}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Шаблон">
+              <Input
+                value={step.template ?? "{input}"}
+                onChange={(e) => update({ ...step, template: e.target.value })}
+              />
+            </Field>
+          </div>
+        ) : null}
+        {step.type === "condition" ? (
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field label="Если содержит">
+              <Input
+                value={
+                  typeof step.condition === "string"
+                    ? step.condition
+                    : (step.condition?.value ?? "")
+                }
+                placeholder="например: approved"
+                onChange={(e) =>
+                  update({
+                    ...step,
+                    condition: { type: "if_contains", value: e.target.value },
+                  })
+                }
+              />
+            </Field>
+            <Field label="Ветка да">
+              <Input
+                value={step.on_true ?? "true"}
+                onChange={(e) => update({ ...step, on_true: e.target.value })}
+              />
+            </Field>
+            <Field label="Ветка нет">
+              <Input
+                value={step.on_false ?? "false"}
+                onChange={(e) => update({ ...step, on_false: e.target.value })}
+              />
+            </Field>
+          </div>
+        ) : null}
+        {step.type === "parallel" ? (
+          <div className="space-y-2 rounded-xl border border-success/20 bg-success/[.04] p-3">
+            <p className="text-xs font-semibold text-ink">
+              Ветки выполняются одновременно, затем результаты объединяются в
+              JSON.
+            </p>
+            {(step.branches ?? []).map((branch, branchIndex) => (
+              <div
+                className="grid gap-2 sm:grid-cols-[150px_1fr]"
+                key={`${step.id}-${branchIndex}`}
+              >
+                <Input
+                  value={branch.name}
+                  onChange={(e) =>
+                    update({
+                      ...step,
+                      branches: (step.branches ?? []).map((item, index) =>
+                        index === branchIndex
+                          ? { ...item, name: e.target.value }
+                          : item,
+                      ),
+                    })
+                  }
+                />
+                <Input
+                  value={branch.steps[0]?.template ?? "{input}"}
+                  onChange={(e) =>
+                    update({
+                      ...step,
+                      branches: (step.branches ?? []).map((item, index) =>
+                        index === branchIndex
+                          ? {
+                              ...item,
+                              steps: [
+                                {
+                                  id: item.steps[0]?.id ?? crypto.randomUUID(),
+                                  type: "tool",
+                                  tool: "text_template",
+                                  template: e.target.value,
+                                },
+                              ],
+                            }
+                          : item,
+                      ),
+                    })
+                  }
+                />
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {step.type !== "condition" &&
+        step.type !== "approval" &&
+        step.type !== "parallel" ? (
+          <>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Field label="Ветка (необязательно)">
+                <Input
+                  value={step.branch ?? ""}
+                  placeholder="например: approved"
+                  onChange={(e) =>
+                    update({ ...step, branch: e.target.value || undefined })
+                  }
+                />
+              </Field>
+              <Field label="Повторы">
+                <Input
+                  type="number"
+                  min="0"
+                  max="3"
+                  value={step.retries ?? 0}
+                  onChange={(e) =>
+                    update({
+                      ...step,
+                      retries: Math.min(
+                        3,
+                        Math.max(0, Number(e.target.value) || 0),
+                      ),
+                    })
+                  }
+                />
+              </Field>
+              <Field label="Timeout, сек">
+                <Input
+                  type="number"
+                  min="1"
+                  max="120"
+                  value={step.timeout_seconds ?? 15}
+                  onChange={(e) =>
+                    update({
+                      ...step,
+                      timeout_seconds: Math.min(
+                        120,
+                        Math.max(1, Number(e.target.value) || 15),
+                      ),
+                    })
+                  }
+                />
+              </Field>
+            </div>
+            <p className="text-[11px] text-muted">
+              Для HTTP-интеграций: до 3 повторов с короткой backoff-паузой и
+              таймаутом 1–120 секунд.
+            </p>
+          </>
+        ) : null}
+        {step.type === "approval" ? (
+          <div className="rounded-xl border border-warning/30 bg-warning/10 px-3 py-3 text-sm text-ink">
+            <CheckCircle2 className="mr-2 inline text-warning" size={16} />
+            <b>Human-in-the-loop.</b> Задача попадёт в очередь подтверждений до
+            запуска workflow.
+          </div>
+        ) : null}
+      </Card>
+    </div>
+  );
 }
 
 export function WorkflowsPage() {
   const qc = useQueryClient();
-  const workflows = useQuery({ queryKey: ["workflows"], queryFn: () => request<WorkflowData[]>("/workflows") });
+  const workflows = useQuery({
+    queryKey: ["workflows"],
+    queryFn: () => request<WorkflowData[]>("/workflows"),
+  });
   const agents = useAgents({ page: 1, search: "", status: "" });
-  const tools = useQuery({ queryKey: ["tools"], queryFn: () => request<Tool[]>("/tools") });
+  const tools = useQuery({
+    queryKey: ["tools"],
+    queryFn: () => request<Tool[]>("/tools"),
+  });
   const [current, setCurrent] = useState<WorkflowData | null>(null);
-  const [name, setName] = useState(""); const [description, setDescription] = useState(""); const [steps, setSteps] = useState<Step[]>([makeStep("agent")]);
-  const reset = () => { setCurrent(null); setName(""); setDescription(""); setSteps([makeStep("agent")]); };
-  const select = (workflow: WorkflowData) => { setCurrent(workflow); setName(workflow.name); setDescription(workflow.description); setSteps(workflow.steps.map(step => ({ ...step, id: step.id || crypto.randomUUID() }))); };
-  const payload = useMemo(() => ({ name: name || "Новый workflow", description, enabled: true, steps: steps.map(({ id, ...step }) => step) }), [name, description, steps]);
-  const moveStep = (fromId: string, toId: string) => setSteps(items => { const from = items.findIndex(item => item.id === fromId); const to = items.findIndex(item => item.id === toId); if (from < 0 || to < 0 || from === to) return items; const next = [...items]; const [moved] = next.splice(from, 1); next.splice(to, 0, moved); return next; });
+  const versions = useQuery({
+    queryKey: ["workflow-versions", current?.id],
+    queryFn: () => request<WorkflowVersion[]>(`/workflows/${current!.id}/versions`),
+    enabled: Boolean(current?.id),
+  });
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [steps, setSteps] = useState<Step[]>([makeStep("agent")]);
+  const reset = () => {
+    setCurrent(null);
+    setName("");
+    setDescription("");
+    setSteps([makeStep("agent")]);
+  };
+  const select = (workflow: WorkflowData) => {
+    setCurrent(workflow);
+    setName(workflow.name);
+    setDescription(workflow.description);
+    setSteps(
+      workflow.steps.map((step) => ({
+        ...step,
+        id: step.id || crypto.randomUUID(),
+      })),
+    );
+  };
+  const payload = useMemo(
+    () => ({
+      name: name || "Новый workflow",
+      description,
+      enabled: true,
+      steps: steps.map(({ id, ...step }) => step),
+    }),
+    [name, description, steps],
+  );
+  const moveStep = (fromId: string, toId: string) =>
+    setSteps((items) => {
+      const from = items.findIndex((item) => item.id === fromId);
+      const to = items.findIndex((item) => item.id === toId);
+      if (from < 0 || to < 0 || from === to) return items;
+      const next = [...items];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
   useEffect(() => {
     const handleDrop = (event: Event) => {
-      const detail = (event as CustomEvent<{ fromId?: string; toId?: string }>).detail;
+      const detail = (event as CustomEvent<{ fromId?: string; toId?: string }>)
+        .detail;
       if (detail?.fromId && detail.toId) moveStep(detail.fromId, detail.toId);
     };
     window.addEventListener("agenthub-step-drop", handleDrop);
     return () => window.removeEventListener("agenthub-step-drop", handleDrop);
   }, [steps]);
-  const save = useMutation({ mutationFn: () => current ? request<WorkflowData>(`/workflows/${current.id}`, { method: "PUT", body: payload }) : request<WorkflowData>("/workflows", { method: "POST", body: payload }), onSuccess: data => { setCurrent(data); qc.invalidateQueries({ queryKey: ["workflows"] }); } });
-  const run = useMutation({ mutationFn: (id: string) => request(`/workflows/${id}/run`, { method: "POST" }) });
+  const save = useMutation({
+    mutationFn: () =>
+      current
+        ? request<WorkflowData>(`/workflows/${current.id}`, {
+            method: "PUT",
+            body: payload,
+          })
+        : request<WorkflowData>("/workflows", {
+            method: "POST",
+            body: payload,
+          }),
+    onSuccess: (data) => {
+      setCurrent(data);
+      qc.invalidateQueries({ queryKey: ["workflows"] });
+    },
+  });
+  const run = useMutation({
+    mutationFn: (id: string) =>
+      request(`/workflows/${id}/run`, { method: "POST" }),
+  });
+  const restore = useMutation({
+    mutationFn: (versionId: string) =>
+      request<WorkflowData>(`/workflows/${current!.id}/versions/${versionId}/restore`, {
+        method: "POST",
+        body: { note: "Restored from workflow history" },
+      }),
+    onSuccess: (data) => {
+      select(data);
+      qc.invalidateQueries({ queryKey: ["workflows"] });
+      qc.invalidateQueries({ queryKey: ["workflow-versions", current?.id] });
+    },
+  });
 
-  return <div className="mx-auto max-w-6xl space-y-5"><div className="relative overflow-hidden rounded-2xl border border-violet/20 bg-gradient-to-br from-violet/[.14] via-card to-accent/[.08] p-6"><div className="absolute -right-16 -top-20 h-52 w-52 rounded-full bg-violet/20 blur-3xl" /><div className="relative flex flex-wrap items-end justify-between gap-4"><div><p className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[.16em] text-violet"><Sparkles size={13} /> Automation studio</p><h1 className="text-3xl font-semibold tracking-tight text-ink">Workflow-конструктор</h1><p className="mt-1 text-sm text-muted">Агенты, безопасные инструменты, параллельные ветки и контроль человека в одном сценарии.</p></div><Button onClick={reset}><Plus size={15} /> Новый workflow</Button></div></div><div className="grid gap-4 lg:grid-cols-[255px_1fr]"><Card className="h-fit space-y-2 p-3"><p className="px-2 pb-1 text-[11px] font-bold uppercase tracking-wider text-muted">Сценарии</p>{workflows.data?.map(workflow => <button onClick={() => select(workflow)} key={workflow.id} className={`w-full rounded-xl p-3 text-left ${current?.id === workflow.id ? "bg-accent/10" : "hover:bg-raised"}`}><span className="flex items-center gap-2 text-sm font-semibold text-ink"><Workflow size={15} className="text-accent" />{workflow.name}</span><span className="mt-1 block pl-6 text-[11px] text-muted">{workflow.steps.length} шагов</span></button>) ?? <p className="p-3 text-sm text-muted">Загрузка…</p>}</Card><Card className="space-y-5"><div className="flex flex-wrap justify-between gap-3"><div><p className="text-[11px] font-bold uppercase tracking-wider text-accent">{current ? "Редактирование" : "Новый сценарий"}</p><h2 className="mt-1 text-lg font-semibold text-ink">{name || "Без названия"}</h2></div><div className="flex gap-2"><Button variant="secondary" size="sm" disabled={!current} onClick={() => current && run.mutate(current.id)} loading={run.isPending}><Play size={13} /> Тестовый запуск</Button><Button size="sm" onClick={() => save.mutate()} loading={save.isPending}><Save size={13} /> Сохранить</Button></div></div><div className="grid gap-3 sm:grid-cols-2"><Field label="Название"><Input value={name} onChange={e => setName(e.target.value)} placeholder="Новый лид → CRM" /></Field><Field label="Описание"><Input value={description} onChange={e => setDescription(e.target.value)} placeholder="Что делает сценарий" /></Field></div><div className="flex flex-wrap items-center gap-2 rounded-2xl border border-accent/15 bg-accent/[.04] p-3 text-xs"><span className="rounded-lg bg-card px-2.5 py-1.5 text-ink">Вход</span>{steps.map((step, i) => <span className="flex items-center gap-2" key={step.id}><ArrowDown className="text-accent" size={13} /><span className="rounded-lg border border-line bg-card px-2.5 py-1.5 text-ink">{i + 1}. {labels[step.type]}</span></span>)}<ArrowDown className="text-accent" size={13} /><span className="rounded-lg bg-success/10 px-2.5 py-1.5 text-success">Готово</span></div><div className="space-y-3"><div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-semibold text-ink">Шаги</h3><p className="text-xs text-muted">Каждый шаг получает результат предыдущего.</p></div><div className="flex flex-wrap gap-1.5"><Button size="sm" variant="secondary" onClick={() => setSteps([...steps, makeStep("agent")])}>+ Агент</Button><Button size="sm" variant="secondary" onClick={() => setSteps([...steps, makeStep("tool")])}>+ Инструмент</Button><Button size="sm" variant="secondary" onClick={() => setSteps([...steps, makeStep("condition")])}><GitBranch size={13} /> Условие</Button><Button size="sm" variant="secondary" onClick={() => setSteps([...steps, makeStep("approval")])}>+ Подтверждение</Button><Button size="sm" variant="secondary" onClick={() => setSteps([...steps, makeStep("parallel")])}>+ Параллельно</Button></div></div>{steps.map((step, index) => <EditorStep key={step.id} step={step} index={index} agents={agents.data?.items ?? []} tools={tools.data ?? []} update={next => setSteps(items => items.map(item => item.id === step.id ? next : item))} remove={() => setSteps(items => items.length === 1 ? items : items.filter(item => item.id !== step.id))} />)}</div></Card></div></div>;
+  return (
+    <div className="mx-auto max-w-6xl space-y-5">
+      <div className="relative overflow-hidden rounded-2xl border border-violet/20 bg-gradient-to-br from-violet/[.14] via-card to-accent/[.08] p-6">
+        <div className="absolute -right-16 -top-20 h-52 w-52 rounded-full bg-violet/20 blur-3xl" />
+        <div className="relative flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[.16em] text-violet">
+              <Sparkles size={13} /> Automation studio
+            </p>
+            <h1 className="text-3xl font-semibold tracking-tight text-ink">
+              Workflow-конструктор
+            </h1>
+            <p className="mt-1 text-sm text-muted">
+              Агенты, безопасные инструменты, параллельные ветки и контроль
+              человека в одном сценарии.
+            </p>
+          </div>
+          <Button onClick={reset}>
+            <Plus size={15} /> Новый workflow
+          </Button>
+        </div>
+      </div>
+      <div className="grid gap-4 lg:grid-cols-[255px_1fr]">
+        <Card className="h-fit space-y-2 p-3">
+          <p className="px-2 pb-1 text-[11px] font-bold uppercase tracking-wider text-muted">
+            Сценарии
+          </p>
+          {workflows.data?.map((workflow) => (
+            <button
+              onClick={() => select(workflow)}
+              key={workflow.id}
+              className={`w-full rounded-xl p-3 text-left ${current?.id === workflow.id ? "bg-accent/10" : "hover:bg-raised"}`}
+            >
+              <span className="flex items-center gap-2 text-sm font-semibold text-ink">
+                <Workflow size={15} className="text-accent" />
+                {workflow.name}
+              </span>
+              <span className="mt-1 block pl-6 text-[11px] text-muted">
+                {workflow.steps.length} шагов
+              </span>
+            </button>
+          )) ?? <p className="p-3 text-sm text-muted">Загрузка…</p>}
+        </Card>
+        <Card className="space-y-5">
+          <div className="flex flex-wrap justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-accent">
+                {current ? "Редактирование" : "Новый сценарий"}
+              </p>
+              <h2 className="mt-1 text-lg font-semibold text-ink">
+                {name || "Без названия"}
+              </h2>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={!current}
+                onClick={() => current && run.mutate(current.id)}
+                loading={run.isPending}
+              >
+                <Play size={13} /> Тестовый запуск
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => save.mutate()}
+                loading={save.isPending}
+              >
+                <Save size={13} /> Сохранить
+              </Button>
+            </div>
+          </div>
+          {current ? (
+            <div className="rounded-xl border border-violet/20 bg-violet/[.04] p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-violet">
+                    История изменений
+                  </p>
+                  <p className="mt-1 text-xs text-muted">
+                    Версии сохраняются автоматически перед каждым изменением.
+                  </p>
+                </div>
+                <Badge tone="violet">{versions.data?.length ?? 0} версий</Badge>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {versions.data?.slice(0, 6).map((version) => (
+                  <button
+                    type="button"
+                    key={version.id}
+                    onClick={() => restore.mutate(version.id)}
+                    disabled={restore.isPending || version.version === versions.data?.[0]?.version}
+                    className="rounded-lg border border-line bg-card px-2.5 py-1.5 text-left text-xs text-ink transition hover:border-violet/50 hover:bg-violet/10 disabled:cursor-default disabled:opacity-60"
+                    title={version.note || `Версия ${version.version}`}
+                  >
+                    <span className="font-semibold">v{version.version}</span>
+                    <span className="ml-1 text-muted">{version.note || "снимок"}</span>
+                  </button>
+                ))}
+                {!versions.data?.length ? <span className="text-xs text-muted">История появится после сохранения.</span> : null}
+              </div>
+            </div>
+          ) : null}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Название">
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Новый лид → CRM"
+              />
+            </Field>
+            <Field label="Описание">
+              <Input
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Что делает сценарий"
+              />
+            </Field>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-accent/15 bg-accent/[.04] p-3 text-xs">
+            <span className="rounded-lg bg-card px-2.5 py-1.5 text-ink">
+              Вход
+            </span>
+            {steps.map((step, i) => (
+              <span className="flex items-center gap-2" key={step.id}>
+                <ArrowDown className="text-accent" size={13} />
+                <span className="rounded-lg border border-line bg-card px-2.5 py-1.5 text-ink">
+                  {i + 1}. {labels[step.type]}
+                </span>
+              </span>
+            ))}
+            <ArrowDown className="text-accent" size={13} />
+            <span className="rounded-lg bg-success/10 px-2.5 py-1.5 text-success">
+              Готово
+            </span>
+          </div>
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="font-semibold text-ink">Шаги</h3>
+                <p className="text-xs text-muted">
+                  Каждый шаг получает результат предыдущего.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setSteps([...steps, makeStep("agent")])}
+                >
+                  + Агент
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setSteps([...steps, makeStep("tool")])}
+                >
+                  + Инструмент
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setSteps([...steps, makeStep("condition")])}
+                >
+                  <GitBranch size={13} /> Условие
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setSteps([...steps, makeStep("approval")])}
+                >
+                  + Подтверждение
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setSteps([...steps, makeStep("parallel")])}
+                >
+                  + Параллельно
+                </Button>
+              </div>
+            </div>
+            {steps.map((step, index) => (
+              <EditorStep
+                key={step.id}
+                step={step}
+                index={index}
+                agents={agents.data?.items ?? []}
+                tools={tools.data ?? []}
+                update={(next) =>
+                  setSteps((items) =>
+                    items.map((item) => (item.id === step.id ? next : item)),
+                  )
+                }
+                remove={() =>
+                  setSteps((items) =>
+                    items.length === 1
+                      ? items
+                      : items.filter((item) => item.id !== step.id),
+                  )
+                }
+              />
+            ))}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
 }

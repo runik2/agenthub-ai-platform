@@ -383,6 +383,22 @@ class Workflow(TimestampMixin, Base):
     steps: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
 
 
+class WorkflowVersion(TimestampMixin, Base):
+    __tablename__ = "workflow_versions"
+
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflows.id", ondelete="CASCADE"), index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    steps: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    note: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    created_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+
 class Schedule(TimestampMixin, Base):
     __tablename__ = "schedules"
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
