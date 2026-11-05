@@ -42,6 +42,8 @@ class Step(BaseModel):
     branch: str | None = None
     on_true: str = "true"
     on_false: str = "false"
+    retries: int = Field(default=0, ge=0, le=3)
+    timeout_seconds: int = Field(default=15, ge=1, le=120)
 
 
 class WorkflowCreate(BaseModel):

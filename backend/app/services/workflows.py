@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 
 import httpx
@@ -8,6 +9,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import AppError
 from app.db.models import Agent, IntegrationTool, LLMProvider, Workflow
 from app.services import llm
+
+
+async def _call_integration(method: str, url: str, content: str, step: dict) -> str:
+    """Call an allowlisted integration with bounded timeout and retries."""
+    retries = min(max(int(step.get("retries", 0) or 0), 0), 3)
+    timeout_seconds = min(max(float(step.get("timeout_seconds", 15) or 15), 1), 120)
+    last_error: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            async with httpx.AsyncClient(timeout=timeout_seconds, follow_redirects=False) as client:
+                response = await client.request(method, url, content=content)
+            if response.status_code >= 400:
+                raise ValueError(f"integration returned HTTP {response.status_code}")
+            return response.text[:20_000]
+        except (httpx.HTTPError, ValueError) as exc:
+            last_error = exc
+            if attempt < retries:
+                await asyncio.sleep(min(0.25 * (2**attempt), 2))
+    raise last_error or ValueError("integration request failed")
 
 
 async def execute_workflow(session: AsyncSession, workflow: Workflow, initial: str) -> str:
@@ -49,11 +69,7 @@ async def execute_workflow(session: AsyncSession, workflow: Workflow, initial: s
                 if not tool_config.is_active:
                     raise AppError("TOOL_INACTIVE", "Workflow tool is disabled", 409)
                 url = f"{tool_config.base_url.rstrip('/')}/{tool_config.allowed_path.lstrip('/')}"
-                async with httpx.AsyncClient(timeout=15, follow_redirects=False) as client:
-                    response = await client.request(tool_config.method, url, content=value)
-                if response.status_code >= 400:
-                    raise ValueError(f"integration returned HTTP {response.status_code}")
-                value = response.text[:20_000]
+                value = await _call_integration(tool_config.method, url, value, step)
             continue
         agent = await session.get(Agent, step.get("agent_id")) if step.get("agent_id") else None
         if step.get("agent_id") and (not agent or agent.owner_id != workflow.owner_id):
