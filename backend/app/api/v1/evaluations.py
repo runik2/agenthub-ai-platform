@@ -73,7 +73,7 @@ async def run_case(
     case = await owned_case(case_id, user, session)
     agent = await session.get(Agent, case.agent_id)
     provider = await session.get(LLMProvider, agent.provider_id) if agent and agent.provider_id else None
-    if not agent or not provider or not provider.is_active:
+    if not agent or not provider or provider.owner_id != user.id or not provider.is_active:
         raise AppError("EVALUATION_NO_PROVIDER", "Agent needs an active model provider", 409)
     run = EvaluationRun(owner_id=user.id, case_id=case.id, agent_id=agent.id, status="running")
     session.add(run)

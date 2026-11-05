@@ -193,7 +193,11 @@ async def update_agent(
     if "provider_id" in data and data["provider_id"] is not None:
         from app.db.models import LLMProvider
 
-        if await session.get(LLMProvider, data["provider_id"]) is None:
+        if await session.scalar(
+            select(LLMProvider.id).where(
+                LLMProvider.id == data["provider_id"], LLMProvider.owner_id == user.id
+            )
+        ) is None:
             raise AppError("PROVIDER_NOT_FOUND", "Provider not found", 404)
     if "name" in data and data["name"] != agent.name:
         agent.slug = await unique_slug(session, data["name"], ignore_id=agent.id)

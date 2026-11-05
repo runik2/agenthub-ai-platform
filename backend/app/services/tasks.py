@@ -31,6 +31,8 @@ async def execute_task(task_id: str) -> None:
                 if not agent or not agent.provider_id:
                     raise RuntimeError("agent has no provider")
                 provider = await session.get(LLMProvider, agent.provider_id)
+                if not provider or provider.owner_id != task.owner_id:
+                    raise RuntimeError("agent provider is not owned by task owner")
                 answer = await llm.chat(
                     provider,
                     agent.model_name or provider.default_model,

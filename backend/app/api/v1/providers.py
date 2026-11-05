@@ -48,8 +48,11 @@ def provider_out(provider: LLMProvider) -> ProviderOut:
     )
 
 
-async def _get_provider(session: AsyncSession, provider_id: str) -> LLMProvider:
-    provider = await session.get(LLMProvider, provider_id)
+async def _get_provider(session: AsyncSession, provider_id: str, owner_id: str | None = None) -> LLMProvider:
+    stmt = select(LLMProvider).where(LLMProvider.id == provider_id)
+    if owner_id:
+        stmt = stmt.where(LLMProvider.owner_id == owner_id)
+    provider = await session.scalar(stmt)
     if provider is None:
         raise AppError("PROVIDER_NOT_FOUND", "Provider not found", 404)
     return provider
@@ -71,10 +74,10 @@ async def list_providers(
     pagination: Pagination = Depends(),
     kind: str = Query(default="", max_length=40),
     is_active: bool | None = Query(default=None),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> Page[ProviderOut]:
-    stmt = select(LLMProvider)
+    stmt = select(LLMProvider).where(LLMProvider.owner_id == user.id)
     if kind.strip():
         stmt = stmt.where(LLMProvider.kind == kind.strip())
     if is_active is not None:
@@ -105,6 +108,7 @@ async def create_provider(
         raise AppError("PROVIDER_BASE_URL_REQUIRED", "base_url is required", 400)
     provider = LLMProvider(
         name=payload.name.strip(),
+        owner_id=user.id,
         kind=payload.kind,
         base_url=base_url.rstrip("/"),
         default_model=payload.default_model.strip(),
@@ -128,10 +132,10 @@ async def create_provider(
 @router.get("/{provider_id}", response_model=ProviderOut)
 async def get_provider(
     provider_id: str,
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> ProviderOut:
-    return provider_out(await _get_provider(session, provider_id))
+    return provider_out(await _get_provider(session, provider_id, user.id))
 
 
 @router.patch("/{provider_id}", response_model=ProviderOut)
@@ -142,7 +146,7 @@ async def update_provider(
     user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
 ) -> ProviderOut:
-    provider = await _get_provider(session, provider_id)
+    provider = await _get_provider(session, provider_id, user.id)
     data = payload.model_dump(exclude_unset=True)
     api_key = data.pop("api_key", None)
     _apply_credentials(provider, api_key)
@@ -168,7 +172,7 @@ async def delete_provider(
     user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
 ) -> StatusResponse:
-    provider = await _get_provider(session, provider_id)
+    provider = await _get_provider(session, provider_id, user.id)
     await session.delete(provider)
     await write_audit(session, request, user.id, "provider.deleted", "provider", provider_id)
     await session.commit()
@@ -182,7 +186,7 @@ async def test_connection(
     user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
 ) -> ConnectionResult:
-    provider = await _get_provider(session, provider_id)
+    provider = await _get_provider(session, provider_id, user.id)
     ok, message, models, latency_ms = await llm.test_connection(provider)
     provider.last_checked_at = datetime.now(UTC)
     provider.last_check_status = "ok" if ok else "error"
@@ -207,10 +211,10 @@ async def test_connection(
 @router.post("/{provider_id}/refresh-models", response_model=ModelsResult)
 async def refresh_models(
     provider_id: str,
-    _: User = Depends(require_roles("admin", "manager")),
+    user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
 ) -> ModelsResult:
-    provider = await _get_provider(session, provider_id)
+    provider = await _get_provider(session, provider_id, user.id)
     try:
         models = await llm.fetch_models(provider)
     except llm.LLMError as exc:

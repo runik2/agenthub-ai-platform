@@ -161,6 +161,7 @@ async def overview(
                 func.coalesce(func.sum(LLMUsage.cost), 0),
             )
             .outerjoin(LLMUsage, LLMUsage.provider_id == LLMProvider.id)
+            .where(LLMProvider.owner_id == user.id)
             .group_by(
                 LLMProvider.id,
                 LLMProvider.name,

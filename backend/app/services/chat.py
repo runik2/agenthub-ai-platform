@@ -71,7 +71,7 @@ async def send_message(
         raise AppError("AGENT_NO_PROVIDER", "This agent has no model provider attached", 409)
 
     provider = await session.get(LLMProvider, agent.provider_id)
-    if provider is None:
+    if provider is None or provider.owner_id != user.id:
         raise AppError("PROVIDER_NOT_FOUND", "The provider of this agent no longer exists", 409)
     if not provider.is_active:
         raise AppError("PROVIDER_INACTIVE", "The provider of this agent is disabled", 409)

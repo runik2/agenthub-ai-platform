@@ -44,6 +44,7 @@ async def seed_demo(session: AsyncSession) -> bool:
         return False
 
     ollama = LLMProvider(
+        owner_id=admin.id,
         name="Ollama (local)",
         kind="ollama",
         base_url=settings.ollama_base_url,
@@ -55,6 +56,7 @@ async def seed_demo(session: AsyncSession) -> bool:
         models_cache=["llama3.2:3b"],
     )
     openai_demo = LLMProvider(
+        owner_id=admin.id,
         name="OpenAI (demo)",
         kind="openai_compatible",
         base_url="https://api.openai.com/v1",

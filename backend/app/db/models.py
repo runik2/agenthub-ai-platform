@@ -54,6 +54,10 @@ class RefreshSession(TimestampMixin, Base):
 class LLMProvider(TimestampMixin, Base):
     __tablename__ = "llm_providers"
 
+    owner_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     kind: Mapped[str] = mapped_column(String(40), nullable=False)  # ollama | openai_compatible
     base_url: Mapped[str] = mapped_column(String(500), nullable=False)
@@ -70,6 +74,7 @@ class LLMProvider(TimestampMixin, Base):
     extra_headers: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
     agents: Mapped[list[Agent]] = relationship(back_populates="provider")
+    owner: Mapped[User] = relationship()
 
 
 class Agent(TimestampMixin, Base):
