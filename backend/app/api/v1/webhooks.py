@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Header, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, workspace_owner_id
+from app.api.deps import get_current_user, require_roles, workspace_owner_id
 from app.config import get_settings
 from app.core.crypto import decrypt_value, encrypt_value
 from app.core.errors import AppError
@@ -59,7 +59,7 @@ async def list_endpoints(
 @router.post("/endpoints", response_model=WebhookCreated, status_code=201)
 async def create_endpoint(
     payload: WebhookCreate,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
 ):
     workflow = await session.scalar(
@@ -112,7 +112,7 @@ async def list_deliveries(
 async def retry_delivery(
     endpoint_id: str,
     delivery_id: str,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_roles("admin", "manager", "operator")),
     session: AsyncSession = Depends(get_session),
 ) -> WebhookDelivery:
     endpoint = await session.scalar(

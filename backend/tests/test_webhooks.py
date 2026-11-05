@@ -182,3 +182,33 @@ async def test_webhook_event_id_is_idempotent(
     assert second.status_code == 200
     assert second.json()["status"] == "duplicate"
     assert queue.calls == 1
+
+
+async def test_viewer_cannot_configure_webhook_endpoint(
+    client: httpx.AsyncClient, auth_headers: dict[str, str]
+) -> None:
+    workflow = await client.post(
+        "/api/v1/workflows",
+        json={"name": "Viewer webhook workflow", "description": "", "enabled": True, "steps": []},
+        headers=auth_headers,
+    )
+    member = await client.post(
+        "/api/v1/team",
+        json={
+            "email": "webhook-viewer@example.com",
+            "full_name": "Webhook Viewer",
+            "password": "viewer123",
+            "role": "viewer",
+        },
+        headers=auth_headers,
+    )
+    login = await client.post(
+        "/api/v1/auth/login", json={"email": member.json()["email"], "password": "viewer123"}
+    )
+    viewer_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    response = await client.post(
+        "/api/v1/webhooks/endpoints",
+        json={"name": "Viewer endpoint", "slug": "viewer-endpoint", "workflow_id": workflow.json()["id"]},
+        headers=viewer_headers,
+    )
+    assert response.status_code == 403
