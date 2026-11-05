@@ -66,6 +66,7 @@ export const ru = {
     subtitle: "Управляйте агентами, моделями и расходом токенов в одном месте.",
     email: "Email",
     password: "Пароль",
+    otp: "Код из приложения-аутентификатора",
     submit: "Войти",
     submitting: "Входим…",
     demoHint: "Демо-доступ: admin@agenthub.local / admin12345",
@@ -278,6 +279,10 @@ export const ru = {
   errors: {
     UNAUTHORIZED: "Нужен вход в систему",
     INVALID_CREDENTIALS: "Неверный email или пароль",
+    TWO_FACTOR_REQUIRED: "Введите действующий код двухфакторной аутентификации",
+    INVALID_TWO_FACTOR: "Неверный код двухфакторной аутентификации",
+    WEBHOOK_PAYLOAD_TOO_LARGE: "Webhook-пayload слишком большой",
+    INVALID_WEBHOOK_PAYLOAD: "Webhook должен содержать корректный JSON",
     USER_DISABLED: "Учётная запись отключена",
     SETUP_ALREADY_DONE: "Администратор уже создан",
     VALIDATION_ERROR: "Проверьте заполнение полей",

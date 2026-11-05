@@ -11,9 +11,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
+from app.config import get_settings
 from app.core.crypto import decrypt_value, encrypt_value
 from app.core.errors import AppError
-from app.db.models import Task, User, WebhookDelivery, WebhookEndpoint, Workflow
+from app.db.models import IntegrationTool, Task, User, WebhookDelivery, WebhookEndpoint, Workflow
 from app.db.session import get_session
 from app.queue.runtime import get_queue
 from app.schemas.webhooks import DeliveryOut, WebhookCreate, WebhookCreated, WebhookOut
@@ -97,11 +98,32 @@ async def receive_webhook(
     )
     if not endpoint:
         raise AppError("WEBHOOK_NOT_FOUND", "Webhook endpoint not found", 404)
+    max_body = max(1, get_settings().webhook_max_body_bytes)
+    content_length = request.headers.get("content-length")
+    if content_length and content_length.isdigit() and int(content_length) > max_body:
+        raise AppError("WEBHOOK_PAYLOAD_TOO_LARGE", "Webhook payload is too large", 413)
     raw = await request.body()
+    if len(raw) > max_body:
+        raise AppError("WEBHOOK_PAYLOAD_TOO_LARGE", "Webhook payload is too large", 413)
     secret = decrypt_value(endpoint.secret_encrypted)
     expected = "sha256=" + hmac.new((secret or "").encode(), raw, hashlib.sha256).hexdigest()
     valid = bool(secret and x_agenthub_signature and hmac.compare_digest(expected, x_agenthub_signature))
-    payload = json.loads(raw.decode() or "{}") if raw else {}
+    if not valid:
+        session.add(
+            WebhookDelivery(
+                endpoint_id=endpoint.id,
+                status="rejected",
+                signature_valid=False,
+                payload={},
+                error="Invalid HMAC signature",
+            )
+        )
+        await session.commit()
+        raise AppError("INVALID_WEBHOOK_SIGNATURE", "Invalid webhook signature", 401)
+    try:
+        payload = json.loads(raw.decode() or "{}") if raw else {}
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise AppError("INVALID_WEBHOOK_PAYLOAD", "Webhook body must be valid JSON", 400) from exc
     delivery = WebhookDelivery(
         endpoint_id=endpoint.id,
         status="rejected" if not valid else "accepted",
@@ -109,21 +131,40 @@ async def receive_webhook(
         payload=payload if isinstance(payload, dict) else {"value": payload},
     )
     session.add(delivery)
-    if not valid:
-        delivery.error = "Invalid HMAC signature"
-        await session.commit()
-        raise AppError("INVALID_WEBHOOK_SIGNATURE", "Invalid webhook signature", 401)
+    workflow = await session.get(Workflow, endpoint.workflow_id)
+    requires_approval = bool(
+        workflow
+        and any(step.get("type") == "approval" for step in workflow.steps or [])
+    )
+    if workflow and not requires_approval:
+        tool_ids = [step.get("tool_id") for step in workflow.steps or [] if step.get("tool_id")]
+        if tool_ids:
+            requires_approval = bool(
+                await session.scalar(
+                    select(IntegrationTool.id).where(
+                        IntegrationTool.id.in_(tool_ids),
+                        IntegrationTool.owner_id == endpoint.owner_id,
+                        IntegrationTool.requires_approval.is_(True),
+                    )
+                )
+            )
     task = Task(
         owner_id=endpoint.owner_id,
         workflow_id=endpoint.workflow_id,
         name=f"Webhook: {endpoint.name}",
         input=raw.decode(),
+        requires_approval=requires_approval,
+        status="waiting_approval" if requires_approval else "pending",
     )
     session.add(task)
     endpoint.last_received_at = datetime.now(UTC)
     await session.flush()
     delivery.task_id = task.id
+    if requires_approval:
+        delivery.status = "waiting_approval"
     await session.commit()
+    if requires_approval:
+        return {"status": "waiting_approval", "task_id": task.id}
     try:
         await get_queue().enqueue("execute_task", {"task_id": task.id})
     except Exception as exc:

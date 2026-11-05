@@ -47,7 +47,7 @@ export function useMe(): UseQueryResult<User> {
 export function useLogin() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: { email: string; password: string }) =>
+    mutationFn: (payload: { email: string; password: string; otp_code?: string }) =>
       request<TokenResponse>("/auth/login", { method: "POST", body: payload }),
     onSuccess: (data) => {
       setToken(data.access_token);

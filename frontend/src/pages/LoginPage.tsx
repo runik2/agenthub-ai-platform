@@ -43,11 +43,12 @@ export function LoginPage() {
   const setupStatus = useSetupStatus();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [otpCode, setOtpCode] = useState("");
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
     login.mutate(
-      { email, password },
+      { email, password, ...(otpCode ? { otp_code: otpCode } : {}) },
       { onSuccess: () => navigate("/", { replace: true }) },
     );
   };
@@ -68,6 +69,21 @@ export function LoginPage() {
             placeholder="admin@agenthub.local"
           />
         </Field>
+
+        {errorCode(login.error) === "TWO_FACTOR_REQUIRED" || otpCode ? (
+          <Field label={t("login.otp")}>
+            <Input
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              pattern="[0-9]{6}"
+              maxLength={6}
+              required={errorCode(login.error) === "TWO_FACTOR_REQUIRED"}
+              value={otpCode}
+              onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, ""))}
+              placeholder="123456"
+            />
+          </Field>
+        ) : null}
         <Field label={t("login.password")}>
           <Input
             type="password"

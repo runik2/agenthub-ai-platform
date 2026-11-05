@@ -21,6 +21,7 @@ class UserOut(ORMModel):
     role: str
     is_active: bool
     created_at: datetime
+    two_factor_enabled: bool = False
 
 
 class SetupStatus(BaseModel):

@@ -35,6 +35,7 @@ class Settings(BaseSettings):
 
     ollama_base_url: str = "http://127.0.0.1:11434"
     llm_timeout_seconds: float = 120.0
+    webhook_max_body_bytes: int = 1_048_576
 
     bootstrap_admin_email: str = "admin@agenthub.local"
     bootstrap_admin_password: str = "admin12345"

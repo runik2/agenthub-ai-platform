@@ -68,6 +68,7 @@ export const en: Dict = {
     subtitle: "Run agents, models and token spend from a single console.",
     email: "Email",
     password: "Password",
+    otp: "Authenticator code",
     submit: "Sign in",
     submitting: "Signing in…",
     demoHint: "Demo access: admin@agenthub.local / admin12345",
@@ -280,6 +281,10 @@ export const en: Dict = {
   errors: {
     UNAUTHORIZED: "Please sign in",
     INVALID_CREDENTIALS: "Wrong email or password",
+    TWO_FACTOR_REQUIRED: "Enter a valid two-factor authentication code",
+    INVALID_TWO_FACTOR: "Invalid two-factor authentication code",
+    WEBHOOK_PAYLOAD_TOO_LARGE: "The webhook payload is too large",
+    INVALID_WEBHOOK_PAYLOAD: "The webhook must contain valid JSON",
     USER_DISABLED: "This account is disabled",
     SETUP_ALREADY_DONE: "An administrator already exists",
     VALIDATION_ERROR: "Check the fields you entered",
