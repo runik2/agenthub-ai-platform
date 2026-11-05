@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3,
@@ -21,6 +21,8 @@ import {
   RadioTower,
   X,
   Command,
+  Search,
+  ArrowRight,
 } from "lucide-react";
 
 import { useLogout, useMe } from "../api/hooks";
@@ -29,7 +31,9 @@ import { ThemeToggle } from "../theme";
 import { useI18n } from "../i18n";
 import { cn } from "../lib/utils";
 
-const mainNav = [
+type NavItem = { to: string; key?: string; label?: string; icon: typeof Brain; end?: boolean; admin?: boolean };
+
+const mainNav: NavItem[] = [
   { to: "/", key: "nav.dashboard", icon: LayoutDashboard, end: true },
   { to: "/agents", key: "nav.agents", icon: Bot },
   { to: "/providers", key: "nav.providers", icon: Plug },
@@ -37,7 +41,7 @@ const mainNav = [
   { to: "/settings", key: "nav.settings", icon: Settings },
 ];
 
-const soonNav: { to: string; key?: string; label?: string; icon: typeof Brain }[] = [
+const soonNav: NavItem[] = [
   { to: "/memories", label: "Память", icon: Brain },
   { to: "/tools", key: "nav.tools", icon: Wrench },
   { to: "/team", label: "Команда", icon: UsersRound },
@@ -57,10 +61,60 @@ export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [commandOpen, setCommandOpen] = useState(false);
+  const [commandQuery, setCommandQuery] = useState("");
+  const [commandIndex, setCommandIndex] = useState(0);
+  const commandInputRef = useRef<HTMLInputElement>(null);
+
+  const openCommandPalette = () => {
+    setCommandQuery("");
+    setCommandIndex(0);
+    setCommandOpen(true);
+  };
 
   useEffect(() => {
     setMenuOpen(false);
+    setCommandOpen(false);
+    setCommandQuery("");
+    setCommandIndex(0);
   }, [location.pathname]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setCommandOpen((open) => {
+          if (open) return false;
+          openCommandPalette();
+          return true;
+        });
+      }
+      if (event.key === "Escape") setCommandOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    if (commandOpen) window.setTimeout(() => commandInputRef.current?.focus(), 0);
+  }, [commandOpen]);
+
+  useEffect(() => {
+    setCommandIndex(0);
+  }, [commandQuery]);
+
+  const commandItems = [...mainNav, ...soonNav]
+    .filter((item) => !item.admin || user?.role === "admin")
+    .map((item) => ({
+      ...item,
+      label: item.label ?? t(item.key ?? ""),
+    }))
+    .filter((item) => item.label.toLowerCase().includes(commandQuery.trim().toLowerCase()));
+
+  const goTo = (path: string) => {
+    setCommandOpen(false);
+    navigate(path);
+  };
 
   const title =
     location.pathname === "/"
@@ -135,7 +189,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   }
                 >
                   <item.icon size={15} />
-                  <span className="truncate">{t(item.key)}</span>
+                  <span className="truncate">{item.label ?? t(item.key ?? "")}</span>
                 </NavLink>
               </li>
             ))}
@@ -213,15 +267,79 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span className="truncate font-medium text-ink">{title}</span>
           </div>
           <div className="ml-auto flex items-center gap-2">
-            <div className="hidden items-center gap-1 rounded-lg border border-line bg-card/70 px-2 py-1 text-[10px] text-muted xl:flex">
+            <button
+              type="button"
+              onClick={openCommandPalette}
+              className="hidden items-center gap-1 rounded-lg border border-line bg-card/70 px-2 py-1 text-[10px] text-muted transition hover:border-accent/50 hover:text-ink xl:flex"
+            >
               <Command size={11} /> K
-            </div>
+            </button>
             <LanguageToggle />
             <ThemeToggle />
           </div>
         </header>
         <main className="min-w-0 flex-1 px-4 py-5 sm:px-6 sm:py-6">{children}</main>
       </div>
+
+      {commandOpen ? (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/45 px-4 pt-[12vh] backdrop-blur-sm" onMouseDown={() => setCommandOpen(false)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Навигация AgentHub"
+            className="w-full max-w-xl overflow-hidden rounded-2xl border border-line bg-card shadow-2xl shadow-slate-950/25"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 border-b border-line px-4">
+              <Search size={17} className="shrink-0 text-muted" />
+              <input
+                ref={commandInputRef}
+                value={commandQuery}
+                onChange={(event) => setCommandQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    setCommandIndex((index) => Math.min(index + 1, Math.max(commandItems.length - 1, 0)));
+                  } else if (event.key === "ArrowUp") {
+                    event.preventDefault();
+                    setCommandIndex((index) => Math.max(index - 1, 0));
+                  } else if (event.key === "Enter" && commandItems[commandIndex]) {
+                    event.preventDefault();
+                    goTo(commandItems[commandIndex].to);
+                  }
+                }}
+                placeholder="Перейти в раздел…"
+                className="h-14 min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-muted"
+              />
+              <kbd className="rounded-md border border-line bg-raised px-1.5 py-0.5 text-[10px] text-muted">ESC</kbd>
+            </div>
+            <div className="max-h-[min(60vh,420px)] overflow-y-auto p-2">
+              {commandItems.map((item, index) => (
+                <button
+                  type="button"
+                  key={item.to}
+                  onClick={() => goTo(item.to)}
+                  className={cn(
+                    "group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-accent/10",
+                    commandIndex === index ? "bg-accent/10" : "",
+                  )}
+                >
+                  <span className="grid h-8 w-8 place-items-center rounded-lg bg-raised text-muted transition group-hover:bg-accent/15 group-hover:text-accent">
+                    <item.icon size={15} />
+                  </span>
+                  <span className="flex-1 text-sm font-medium text-ink">{item.label}</span>
+                  <ArrowRight size={14} className="text-muted/50 transition group-hover:translate-x-0.5 group-hover:text-accent" />
+                </button>
+              ))}
+              {!commandItems.length ? <p className="px-3 py-10 text-center text-sm text-muted">Ничего не найдено</p> : null}
+            </div>
+            <div className="flex items-center gap-3 border-t border-line bg-raised/40 px-4 py-2 text-[10px] text-muted">
+              <span><kbd className="rounded border border-line bg-card px-1">Ctrl</kbd> + <kbd className="rounded border border-line bg-card px-1">K</kbd> открыть</span>
+              <span>Быстрый переход по AgentHub</span>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
