@@ -21,11 +21,12 @@ async def execute_task(task_id: str) -> None:
         session.add(run)
         await session.commit()
         try:
+            trace: list[dict] = []
             if task.workflow_id:
                 from app.services.workflows import execute_workflow
 
                 wf = await session.get(Workflow, task.workflow_id)
-                result = await execute_workflow(session, wf, task.input) if wf else task.input
+                result = await execute_workflow(session, wf, task.input, trace) if wf else task.input
             elif task.agent_id:
                 agent = await session.get(Agent, task.agent_id)
                 if not agent or not agent.provider_id:
@@ -50,9 +51,11 @@ async def execute_task(task_id: str) -> None:
             task.result = result
             run.status = "succeeded"
             run.result = result
+            run.steps = trace
         except Exception as exc:  # noqa: BLE001
             task.error = str(exc)
             run.error = str(exc)
+            run.steps = trace
             if task.attempts <= task.max_retries:
                 task.status = "pending"
                 task.next_run_at = datetime.now(UTC) + timedelta(seconds=2 ** (task.attempts - 1))

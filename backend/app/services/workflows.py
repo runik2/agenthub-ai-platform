@@ -38,11 +38,13 @@ async def _execute_steps(
     workflow_id: str,
     steps: list[dict],
     initial: str,
+    trace: list[dict] | None = None,
 ) -> str:
     value = initial
     active_branch: str | None = None
     for step in steps or []:
         step_type = step.get("type", "agent")
+        step_input = value
         started = time.perf_counter()
         try:
             if step_type == "condition":
@@ -132,17 +134,30 @@ async def _execute_steps(
             )
             value = answer.content
         finally:
+            if trace is not None:
+                trace.append(
+                    {
+                        "step_id": step.get("id"),
+                        "type": step_type,
+                        "input": step_input,
+                        "output": value,
+                        "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+                    }
+                )
             metrics.observe_workflow_step(
                 workflow_id, step_type, round((time.perf_counter() - started) * 1000, 2)
             )
     return value
 
 
-async def execute_workflow(session: AsyncSession, workflow, initial: str) -> str:
+async def execute_workflow(
+    session: AsyncSession, workflow, initial: str, trace: list[dict] | None = None
+) -> str:
     return await _execute_steps(
         session,
         getattr(workflow, "owner_id", "unknown"),
         getattr(workflow, "id", "unknown"),
         workflow.steps or [],
         initial,
+        trace,
     )

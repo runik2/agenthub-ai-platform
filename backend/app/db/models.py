@@ -348,6 +348,7 @@ class TaskRun(TimestampMixin, Base):
     attempt: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     result: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    steps: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
