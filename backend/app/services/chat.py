@@ -166,7 +166,14 @@ async def send_message(
         latency_ms=result.latency_ms,
         model_name=result.model,
         provider_id=provider.id,
-        meta={"estimated": result.estimated, "raw_usage": result.raw_usage},
+        meta={
+            "estimated": result.estimated,
+            "raw_usage": result.raw_usage,
+            "sources": [
+                {"document_id": chunk.document_id, "title": title, "chunk_index": chunk.chunk_index}
+                for chunk, title in knowledge
+            ],
+        },
     )
     session.add(assistant_message)
     await session.flush()

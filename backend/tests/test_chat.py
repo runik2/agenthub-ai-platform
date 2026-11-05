@@ -109,6 +109,26 @@ async def test_chat_uses_system_prompt_and_history(
     assert roles.count("assistant") == 1
 
 
+async def test_chat_persists_knowledge_citations(
+    client: httpx.AsyncClient, auth_headers: dict[str, str], mock_llm
+) -> None:
+    context = await _prepare(client, auth_headers)
+    document = await client.post(
+        "/api/v1/knowledge/documents",
+        json={"title": "Refund policy", "content": "Refunds are available within 30 days."},
+        headers=auth_headers,
+    )
+    assert document.status_code == 201, document.text
+    response = await client.post(
+        f"/api/v1/conversations/{context['conversation']['id']}/messages",
+        json={"content": "What is the refunds policy?"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    sources = response.json()["assistant_message"]["meta"]["sources"]
+    assert sources and sources[0]["title"] == "Refund policy"
+
+
 async def test_provider_failure_is_reported_not_swallowed(
     client: httpx.AsyncClient, auth_headers: dict[str, str], mock_llm
 ) -> None:

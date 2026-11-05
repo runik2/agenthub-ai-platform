@@ -249,6 +249,7 @@ export function AgentChatPage() {
                       {message.content}
                     </div>
                     {!isUser ? (
+                      <>
                       <span className="tabular flex flex-wrap items-center gap-2 px-1 text-[10.5px] text-muted">
                         <span>{message.model_name}</span>
                         <span>·</span>
@@ -259,6 +260,16 @@ export function AgentChatPage() {
                         <span>·</span>
                         <span>{message.latency_ms} ms</span>
                       </span>
+                      {Array.isArray(message.meta.sources) && message.meta.sources.length > 0 ? (
+                        <div className="flex flex-wrap items-center gap-1.5 px-1 text-[10.5px] text-muted">
+                          <span className="font-semibold text-violet">Источники:</span>
+                          {message.meta.sources.map((source) => {
+                            const item = source as { title?: string; chunk_index?: number };
+                            return <span key={`${item.title}-${item.chunk_index}`} className="rounded-md border border-violet/20 bg-violet/10 px-1.5 py-0.5 text-violet">{item.title ?? "Документ"} · {Number(item.chunk_index ?? 0) + 1}</span>;
+                          })}
+                        </div>
+                      ) : null}
+                      </>
                     ) : null}
                   </div>
                 );
