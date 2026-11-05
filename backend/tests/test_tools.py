@@ -25,6 +25,9 @@ async def test_tools_are_allowlisted_and_owner_scoped(
     listing = await client.get("/api/v1/tools", headers=auth_headers)
     assert listing.status_code == 200
     assert any(item["id"] == tool["id"] for item in listing.json())
+    journal = await client.get("/api/v1/tools/runs", headers=auth_headers)
+    assert journal.status_code == 200
+    assert isinstance(journal.json(), list)
 
     updated = await client.patch(
         f"/api/v1/tools/{tool['id']}", json={"is_active": False}, headers=auth_headers

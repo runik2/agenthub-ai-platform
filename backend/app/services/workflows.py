@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError
 from app.core.metrics import metrics
-from app.db.models import Agent, IntegrationTool, LLMProvider, LLMUsage
+from app.db.models import Agent, IntegrationRun, IntegrationTool, LLMProvider, LLMUsage
 from app.services import llm
 from app.services.pricing import compute_cost
 
@@ -113,7 +113,41 @@ async def _execute_steps(
                     if not tool_config.is_active:
                         raise AppError("TOOL_INACTIVE", "Workflow tool is disabled", 409)
                     url = f"{tool_config.base_url.rstrip('/')}/{tool_config.allowed_path.lstrip('/')}"
-                    value = await _call_integration(tool_config.method, url, value, step)
+                    integration_started = time.perf_counter()
+                    request_preview = value[:500]
+                    try:
+                        value = await _call_integration(tool_config.method, url, value, step)
+                    except Exception as exc:
+                        if session is not None:
+                            session.add(
+                                IntegrationRun(
+                                    owner_id=owner_id,
+                                    tool_id=tool_config.id,
+                                    workflow_id=workflow_id,
+                                    method=tool_config.method,
+                                    url=url,
+                                    status="error",
+                                    latency_ms=round((time.perf_counter() - integration_started) * 1000),
+                                    request_preview=request_preview,
+                                    error=str(exc)[:500],
+                                )
+                            )
+                        raise
+                    if session is not None:
+                        session.add(
+                            IntegrationRun(
+                                owner_id=owner_id,
+                                tool_id=tool_config.id,
+                                workflow_id=workflow_id,
+                                method=tool_config.method,
+                                url=url,
+                                status="ok",
+                                status_code=200,
+                                latency_ms=round((time.perf_counter() - integration_started) * 1000),
+                                request_preview=request_preview,
+                                response_preview=value[:500],
+                            )
+                        )
                 continue
             if session is None:
                 value = step.get("prompt", "{input}").replace("{input}", value)

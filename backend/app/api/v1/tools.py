@@ -9,9 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_roles, workspace_owner_id
 from app.core.errors import AppError
-from app.db.models import IntegrationTool, User
+from app.db.models import IntegrationRun, IntegrationTool, User
 from app.db.session import get_session
-from app.schemas.tools import ToolCreate, ToolOut, ToolTemplateOut, ToolUpdate
+from app.schemas.tools import IntegrationRunOut, ToolCreate, ToolOut, ToolTemplateOut, ToolUpdate
 
 router = APIRouter(prefix="/tools", tags=["tools"])
 
@@ -138,6 +138,19 @@ async def create_tool(
     await session.commit()
     await session.refresh(tool)
     return tool
+
+
+@router.get("/runs", response_model=list[IntegrationRunOut])
+async def list_integration_runs(
+    user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)
+):
+    rows = await session.scalars(
+        select(IntegrationRun)
+        .where(IntegrationRun.owner_id == workspace_owner_id(user))
+        .order_by(IntegrationRun.created_at.desc())
+        .limit(100)
+    )
+    return list(rows.all())
 
 
 @router.patch("/{tool_id}", response_model=ToolOut)

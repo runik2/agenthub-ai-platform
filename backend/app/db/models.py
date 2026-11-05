@@ -237,6 +237,22 @@ class IntegrationTool(TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
 
+class IntegrationRun(TimestampMixin, Base):
+    __tablename__ = "integration_runs"
+
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    tool_id: Mapped[str] = mapped_column(ForeignKey("integration_tools.id", ondelete="CASCADE"), index=True)
+    workflow_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    method: Mapped[str] = mapped_column(String(10), nullable=False)
+    url: Mapped[str] = mapped_column(String(500), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    status_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    latency_ms: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    request_preview: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    response_preview: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 class PromptVersion(TimestampMixin, Base):
     __tablename__ = "prompt_versions"
 

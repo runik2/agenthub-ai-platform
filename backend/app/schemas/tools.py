@@ -52,3 +52,19 @@ class ToolTemplateOut(BaseModel):
     allowed_path: str
     requires_approval: bool
     setup_hint: str
+
+
+class IntegrationRunOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    tool_id: str
+    workflow_id: str | None
+    method: str
+    url: str
+    status: str
+    status_code: int | None
+    latency_ms: int
+    request_preview: str
+    response_preview: str
+    error: str | None
+    created_at: datetime
