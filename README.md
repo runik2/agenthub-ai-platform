@@ -145,8 +145,22 @@ docker compose up --build      # НЕ ЗАПУСКАЛОСЬ: на машине 
 `web` (nginx со сборкой Vite и проксированием `/api`). Переменные: `POSTGRES_PASSWORD`, `JWT_SECRET`,
 `OLLAMA_BASE_URL` (для Ollama на хосте — `http://host.docker.internal:11434`).
 
-Ожидайте шероховатостей: контур не отлажен, `arq`-воркер пока умеет только `ping`, отдельного
-scheduler-цикла нет (это этап 3).
+В этой среде Docker-контур не запускался, поэтому перед production-деплоем нужно выполнить
+smoke-проверку образов и внешних сервисов. Воркер обрабатывает durable tasks, а scheduler
+создаёт задачи по cron и переотправляет отложенные retries.
+
+### PostgreSQL backup
+
+Скрипт `ops/backup-postgres.sh` создаёт custom-format dump и удаляет архивы старше retention-периода:
+
+```bash
+DATABASE_HOST=db DATABASE_USER=agenthub DATABASE_NAME=agenthub \
+  PGPASSWORD="$POSTGRES_PASSWORD" BACKUP_DIR=/var/backups/agenthub \
+  RETENTION_DAYS=14 ./ops/backup-postgres.sh
+```
+
+Архивы нужно хранить на отдельном persistent volume или в объектном хранилище и регулярно
+проверять восстановлением через `pg_restore`.
 
 ## Ограничения этого этапа
 
