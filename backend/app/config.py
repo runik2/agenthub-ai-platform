@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     refresh_token_ttl_days: int = 30
     password_reset_ttl_minutes: int = 30
     password_reset_frontend_url: str = "http://localhost:5173/login"
+    team_invite_frontend_url: str = "http://localhost:5173/invite"
 
     smtp_host: str = ""
     smtp_port: int = 587

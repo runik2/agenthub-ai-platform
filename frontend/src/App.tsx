@@ -25,6 +25,7 @@ import { TeamPage } from "./pages/TeamPage";
 import { KnowledgePage } from "./pages/KnowledgePage";
 import { EvaluationsPage } from "./pages/EvaluationsPage";
 import { WebhooksPage } from "./pages/WebhooksPage";
+import { InvitePage } from "./pages/InvitePage";
 
 function Splash() {
   return (
@@ -72,6 +73,7 @@ export default function App() {
     <SetupGuard>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/invite" element={<InvitePage />} />
         <Route path="/setup" element={<SetupPage />} />
         <Route
           path="/"

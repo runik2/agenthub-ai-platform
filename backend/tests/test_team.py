@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from urllib.parse import parse_qs, urlparse
+
 import httpx
 
 
@@ -98,3 +100,27 @@ async def test_manager_can_work_with_admin_workspace_resources(
     listed = await client.get("/api/v1/workflows", headers=manager_headers)
     assert listed.status_code == 200
     assert any(item["id"] == workflow.json()["id"] for item in listed.json())
+
+
+async def test_invitation_link_creates_workspace_member_once(
+    client: httpx.AsyncClient, auth_headers: dict[str, str]
+) -> None:
+    created = await client.post(
+        "/api/v1/team/invitations",
+        json={"email": "invited@example.com", "role": "operator"},
+        headers=auth_headers,
+    )
+    assert created.status_code == 201, created.text
+    invite_url = created.json()["invite_url"]
+    token = parse_qs(urlparse(invite_url).query)["invite_token"][0]
+    accepted = await client.post(
+        "/api/v1/team/invitations/accept",
+        json={"token": token, "full_name": "Invited User", "password": "invite-pass123"},
+    )
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["email"] == "invited@example.com"
+    reused = await client.post(
+        "/api/v1/team/invitations/accept",
+        json={"token": token, "full_name": "Another User", "password": "invite-pass123"},
+    )
+    assert reused.status_code == 400

@@ -33,3 +33,27 @@ class TeamUserUpdate(BaseModel):
     @classmethod
     def normalize_legacy_role(cls, value: Role | None) -> Role | None:
         return "viewer" if value == "user" else value
+
+
+class TeamInvitationCreate(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+    role: Role = "operator"
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        return value.strip().lower()
+
+
+class TeamInvitationOut(BaseModel):
+    id: str
+    email: str
+    role: str
+    expires_at: datetime
+    invite_url: str
+
+
+class TeamInvitationAccept(BaseModel):
+    token: str = Field(min_length=20, max_length=500)
+    full_name: str = Field(default="", max_length=255)
+    password: str = Field(min_length=8, max_length=128)
