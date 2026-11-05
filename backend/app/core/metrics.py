@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from threading import Lock
+from threading import RLock
 
 
 class Metrics:
     """Small dependency-free Prometheus registry for the API process."""
 
     def __init__(self) -> None:
-        self._lock = Lock()
+        self._lock = RLock()
         self._requests: defaultdict[tuple[str, str], int] = defaultdict(int)
         self._errors: defaultdict[tuple[str, str], int] = defaultdict(int)
         self._duration_ms: defaultdict[str, float] = defaultdict(float)
+        self._workflow_steps: defaultdict[tuple[str, str], tuple[int, float]] = defaultdict(
+            lambda: (0, 0.0)
+        )
 
     def observe_request(self, method: str, path: str, status: int, duration_ms: float) -> None:
         with self._lock:
@@ -48,7 +51,27 @@ class Metrics:
             )
             for path, duration in sorted(self._duration_ms.items()):
                 lines.append(f'agenthub_http_duration_ms_total{{path="{path}"}} {duration:.2f}')
+        lines.extend(
+            [
+                "# HELP agenthub_workflow_step_duration_ms_total Sum of workflow step durations.",
+                "# TYPE agenthub_workflow_step_duration_ms_total counter",
+                *self.render_workflow_steps(),
+            ]
+        )
         return "\n".join(lines) + "\n"
+
+    def observe_workflow_step(self, workflow_id: str, step_type: str, duration_ms: float) -> None:
+        with self._lock:
+            count, total = self._workflow_steps[(workflow_id, step_type)]
+            self._workflow_steps[(workflow_id, step_type)] = (count + 1, total + duration_ms)
+
+    def render_workflow_steps(self) -> list[str]:
+        with self._lock:
+            return [
+                "agenthub_workflow_step_duration_ms_total{"
+                f'workflow_id="{workflow_id}",step_type="{step_type}"}} {total:.2f}'
+                for (workflow_id, step_type), (_, total) in sorted(self._workflow_steps.items())
+            ]
 
 
 metrics = Metrics()

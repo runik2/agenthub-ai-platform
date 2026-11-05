@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from app.queue.arq import ArqTaskQueue
@@ -38,6 +40,39 @@ async def test_workflow_condition_routes_to_named_branch() -> None:
     )()
     result = await execute_workflow(None, workflow, "approved order")
     assert result == "YES: approved order"
+
+
+@pytest.mark.asyncio
+async def test_workflow_parallel_branches_join_results() -> None:
+    workflow = type(
+        "WorkflowStub",
+        (),
+        {
+            "owner_id": "owner",
+            "id": "parallel-workflow",
+            "steps": [
+                {
+                    "type": "parallel",
+                    "branches": [
+                        {
+                            "name": "sales",
+                            "steps": [
+                                {"type": "tool", "tool": "text_template", "template": "sales: {input}"}
+                            ],
+                        },
+                        {
+                            "name": "support",
+                            "steps": [
+                                {"type": "tool", "tool": "text_template", "template": "support: {input}"}
+                            ],
+                        },
+                    ],
+                }
+            ],
+        },
+    )()
+    result = await execute_workflow(None, workflow, "lead")
+    assert json.loads(result) == {"sales": "sales: lead", "support": "support: lead"}
 
 
 def test_arq_queue_lifecycle_is_local_import_safe() -> None:

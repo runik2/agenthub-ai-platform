@@ -34,7 +34,7 @@ class TaskApprovalEdit(BaseModel):
 
 class Step(BaseModel):
     id: str
-    type: str = "agent"  # agent | tool | condition | approval
+    type: str = "agent"  # agent | tool | condition | approval | parallel
     agent_id: str | None = None
     prompt: str = ""
     tool: str | None = None
@@ -48,6 +48,7 @@ class Step(BaseModel):
     on_false: str = "false"
     retries: int = Field(default=0, ge=0, le=3)
     timeout_seconds: int = Field(default=15, ge=1, le=120)
+    branches: list[dict] = Field(default_factory=list, max_length=8)
 
 
 class WorkflowCreate(BaseModel):
