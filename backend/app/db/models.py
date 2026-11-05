@@ -168,6 +168,12 @@ class Task(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True, nullable=False)
     result: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    requires_approval: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    approval_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    approved_by_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     max_retries: Mapped[int] = mapped_column(Integer, default=2, nullable=False)
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

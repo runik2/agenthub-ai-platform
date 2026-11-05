@@ -21,13 +21,16 @@ class TaskOut(BaseModel):
     status: str
     result: str | None
     error: str | None
+    requires_approval: bool
+    approval_note: str | None
+    approved_at: datetime | None
     attempts: int
     created_at: datetime
 
 
 class Step(BaseModel):
     id: str
-    type: str = "agent"
+    type: str = "agent"  # agent | tool | condition | approval
     agent_id: str | None = None
     prompt: str = ""
     tool: str | None = None

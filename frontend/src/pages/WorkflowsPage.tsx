@@ -6,9 +6,9 @@ import { request } from "../api/client";
 import { useAgents } from "../api/hooks";
 import { Badge, Button, Card, Field, IconButton, Input, Select } from "../components/ui";
 
-type Step = { id: string; type: "agent" | "tool" | "condition"; agent_id?: string; prompt?: string; tool?: string; template?: string; condition?: string };
+type Step = { id: string; type: "agent" | "tool" | "condition" | "approval"; agent_id?: string; prompt?: string; tool?: string; template?: string; condition?: string };
 type WorkflowData = { id: string; name: string; description: string; enabled: boolean; steps: Step[] };
-const stepLabels: Record<Step["type"], string> = { agent: "AI-агент", tool: "Инструмент", condition: "Условие" };
+const stepLabels: Record<Step["type"], string> = { agent: "AI-агент", tool: "Инструмент", condition: "Условие", approval: "Подтверждение" };
 const tools = ["text_template", "json_extract", "http_get"];
 const makeStep = (type: Step["type"] = "agent"): Step => ({ id: crypto.randomUUID(), type, prompt: "Обработай входные данные: {input}" });
 

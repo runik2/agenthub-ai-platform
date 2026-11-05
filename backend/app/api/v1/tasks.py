@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,11 +42,21 @@ async def create_task(
     ):
         from app.core.errors import AppError
         raise AppError("NOT_FOUND", "Workflow not found", 404)
-    task = Task(owner_id=user.id, **values)
+    workflow_requires_approval = False
+    if values["workflow_id"]:
+        workflow = await session.get(Workflow, values["workflow_id"])
+        workflow_requires_approval = bool(
+            workflow and any(step.get("type") == "approval" for step in workflow.steps or [])
+        )
+    task = Task(owner_id=user.id, requires_approval=workflow_requires_approval, **values)
+    if workflow_requires_approval:
+        task.status = "waiting_approval"
     session.add(task)
     await session.commit()
     await session.refresh(task)
     try:
+        if task.status == "waiting_approval":
+            return task
         await get_queue().enqueue("execute_task", {"task_id": task.id})
     except Exception as exc:
         task.status, task.error = "failed", f"queue enqueue failed: {exc}"
@@ -73,13 +85,56 @@ async def run_task(
         from app.core.errors import AppError
 
         raise AppError("NOT_FOUND", "Task not found", 404)
-    task.status = "pending"
+    task.status = "waiting_approval" if task.requires_approval and task.approved_at is None else "pending"
+    await session.commit()
+    try:
+        if task.status == "waiting_approval":
+            await session.commit()
+            await session.refresh(task)
+            return task
+        await get_queue().enqueue("execute_task", {"task_id": task.id})
+    except Exception as exc:
+        task.status, task.error = "failed", f"queue enqueue failed: {exc}"
+        await session.commit()
+    await session.refresh(task)
+    return task
+
+
+@router.post("/{task_id}/approve", response_model=TaskOut)
+async def approve_task(
+    task_id: str, user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)
+):
+    task = await session.scalar(select(Task).where(Task.id == task_id, Task.owner_id == user.id))
+    if not task:
+        from app.core.errors import AppError
+        raise AppError("NOT_FOUND", "Task not found", 404)
+    if task.status != "waiting_approval":
+        from app.core.errors import AppError
+        raise AppError("APPROVAL_NOT_PENDING", "Task is not waiting for approval", 409)
+    task.status, task.approved_at, task.approved_by_id = "pending", datetime.now(UTC), user.id
     await session.commit()
     try:
         await get_queue().enqueue("execute_task", {"task_id": task.id})
     except Exception as exc:
         task.status, task.error = "failed", f"queue enqueue failed: {exc}"
         await session.commit()
+    await session.refresh(task)
+    return task
+
+
+@router.post("/{task_id}/reject", response_model=TaskOut)
+async def reject_task(
+    task_id: str, user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)
+):
+    task = await session.scalar(select(Task).where(Task.id == task_id, Task.owner_id == user.id))
+    if not task:
+        from app.core.errors import AppError
+        raise AppError("NOT_FOUND", "Task not found", 404)
+    if task.status != "waiting_approval":
+        from app.core.errors import AppError
+        raise AppError("APPROVAL_NOT_PENDING", "Task is not waiting for approval", 409)
+    task.status, task.error = "rejected", "Rejected by operator"
+    await session.commit()
     await session.refresh(task)
     return task
 

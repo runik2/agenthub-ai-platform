@@ -13,6 +13,9 @@ from app.services import llm
 async def execute_workflow(session: AsyncSession, workflow: Workflow, initial: str) -> str:
     value = initial
     for step in workflow.steps or []:
+        if step.get("type") == "approval":
+            # The task was held before execution. This marker documents the safe boundary in the graph.
+            continue
         condition = step.get("condition") or {}
         if isinstance(condition, str):
             condition = {"type": "if_contains", "value": condition}
