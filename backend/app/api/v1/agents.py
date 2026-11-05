@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query, Request
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, write_audit
 from app.core.errors import AppError
 from app.core.pagination import Pagination, paginate
-from app.db.models import Agent, Conversation, User
+from app.db.models import Agent, Conversation, PromptVersion, User
 from app.db.session import get_session
 from app.schemas.agents import AgentCreate, AgentOut, AgentTemplate, AgentUpdate
 from app.schemas.common import Page, StatusResponse
+from app.schemas.prompt_versions import PromptRollback, PromptVersionOut
 from app.services.agent_templates import TEMPLATES, get_template
 
 router = APIRouter(prefix="/agents", tags=["agents"])
@@ -50,6 +51,21 @@ async def get_owned_agent(session: AsyncSession, user: User, agent_id: str) -> A
     if agent is None:
         raise AppError("AGENT_NOT_FOUND", "Agent not found", 404)
     return agent
+
+
+async def snapshot_prompt(session: AsyncSession, agent: Agent, note: str) -> PromptVersion:
+    latest = await session.scalar(
+        select(func.max(PromptVersion.version)).where(PromptVersion.agent_id == agent.id)
+    )
+    snapshot = PromptVersion(
+        owner_id=agent.owner_id,
+        agent_id=agent.id,
+        version=(latest or 0) + 1,
+        system_prompt=agent.system_prompt,
+        note=note,
+    )
+    session.add(snapshot)
+    return snapshot
 
 
 @router.get("/templates", response_model=list[AgentTemplate])
@@ -105,6 +121,7 @@ async def create_agent(
     )
     session.add(agent)
     await session.flush()
+    await snapshot_prompt(session, agent, "Initial prompt")
     await write_audit(session, request, user.id, "agent.created", "agent", agent.id, {"name": agent.name})
     await session.commit()
     await session.refresh(agent)
@@ -138,6 +155,7 @@ async def create_from_template(
     )
     session.add(agent)
     await session.flush()
+    await snapshot_prompt(session, agent, "Created from template")
     await write_audit(
         session,
         request,
@@ -183,12 +201,56 @@ async def update_agent(
         data["tags"] = list(dict.fromkeys(tag.strip()[:32] for tag in data["tags"] if tag.strip()))[:12]
     for field, value in data.items():
         setattr(agent, field, value)
+    if "system_prompt" in data:
+        await snapshot_prompt(session, agent, "Prompt updated")
     await write_audit(session, request, user.id, "agent.updated", "agent", agent.id)
     try:
         await session.commit()
     except IntegrityError as exc:
         await session.rollback()
         raise AppError("AGENT_CONFLICT", "Agent could not be saved", 409) from exc
+    await session.refresh(agent)
+    return AgentOut.model_validate(agent)
+
+
+@router.get("/{agent_id}/prompt-versions", response_model=list[PromptVersionOut])
+async def list_prompt_versions(
+    agent_id: str,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> list[PromptVersionOut]:
+    await get_owned_agent(session, user, agent_id)
+    rows = await session.scalars(
+        select(PromptVersion)
+        .where(PromptVersion.agent_id == agent_id, PromptVersion.owner_id == user.id)
+        .order_by(PromptVersion.version.desc())
+    )
+    return [PromptVersionOut.model_validate(row) for row in rows]
+
+
+@router.post("/{agent_id}/prompt-versions/{version_id}/restore", response_model=AgentOut)
+async def restore_prompt_version(
+    agent_id: str,
+    version_id: str,
+    request: Request,
+    payload: PromptRollback = PromptRollback(),
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> AgentOut:
+    agent = await get_owned_agent(session, user, agent_id)
+    version = await session.scalar(
+        select(PromptVersion).where(
+            PromptVersion.id == version_id,
+            PromptVersion.agent_id == agent.id,
+            PromptVersion.owner_id == user.id,
+        )
+    )
+    if not version:
+        raise AppError("PROMPT_VERSION_NOT_FOUND", "Prompt version not found", 404)
+    agent.system_prompt = version.system_prompt
+    await snapshot_prompt(session, agent, payload.note or f"Restored version {version.version}")
+    await write_audit(session, request, user.id, "agent.prompt_restored", "agent", agent.id)
+    await session.commit()
     await session.refresh(agent)
     return AgentOut.model_validate(agent)
 

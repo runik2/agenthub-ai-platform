@@ -1,0 +1,18 @@
+import { ArrowLeft, CheckCircle2, History, RotateCcw } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useParams } from "react-router-dom";
+
+import { request } from "../api/client";
+import type { Agent } from "../api/types";
+import { Badge, Button, Card } from "../components/ui";
+
+type Version = { id: string; version: number; system_prompt: string; note: string; created_at: string };
+
+export function PromptVersionsPage() {
+  const navigate = useNavigate(); const { id } = useParams(); const queryClient = useQueryClient();
+  const agent = useQuery({ queryKey: ["agent", id], queryFn: () => request<Agent>(`/agents/${id}`), enabled: Boolean(id) });
+  const versions = useQuery({ queryKey: ["prompt-versions", id], queryFn: () => request<Version[]>(`/agents/${id}/prompt-versions`), enabled: Boolean(id) });
+  const restore = useMutation({ mutationFn: (versionId: string) => request<Agent>(`/agents/${id}/prompt-versions/${versionId}/restore`, { method: "POST" }), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["agent", id] }); queryClient.invalidateQueries({ queryKey: ["prompt-versions", id] }); } });
+  const format = (value: string) => new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "long", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+  return <div className="mx-auto max-w-5xl space-y-5"><Button variant="ghost" size="sm" onClick={() => navigate(`/agents/${id}/edit`)}><ArrowLeft size={14} /> К настройкам агента</Button><section className="relative overflow-hidden rounded-2xl border border-accent/20 bg-gradient-to-br from-accent/[.13] via-card to-violet/[.08] p-6"><div className="absolute -right-8 -top-12 h-48 w-48 rounded-full bg-accent/20 blur-3xl" /><div className="relative"><p className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[.16em] text-accent"><History size={14} /> Prompt lifecycle</p><h1 className="text-3xl font-semibold tracking-tight text-ink">История промпта</h1><p className="mt-1 text-sm text-muted">{agent.data?.name ?? "Агент"} · сравнивайте версии и безопасно возвращайтесь к проверенной формулировке.</p></div></section><Card><div className="flex items-center justify-between"><div><p className="text-[11px] font-bold uppercase tracking-wider text-muted">Снимки конфигурации</p><h2 className="mt-1 font-semibold text-ink">Версии системного промпта</h2></div><Badge tone="accent">{versions.data?.length ?? 0} версий</Badge></div><div className="mt-5 space-y-3">{versions.isLoading ? <p className="py-16 text-center text-sm text-muted">Загружаем историю…</p> : versions.data?.map((item, index) => <article key={item.id} className="rounded-xl border border-line bg-card/55 p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-2"><span className="grid h-8 w-8 place-items-center rounded-lg bg-accent/10 text-sm font-bold text-accent">v{item.version}</span><div><p className="font-semibold text-ink">{item.note || "Изменение промпта"}</p><p className="text-xs text-muted">{format(item.created_at)}</p></div></div>{index === 0 ? <Badge tone="success"><CheckCircle2 size={11} /> текущая</Badge> : <Button size="sm" variant="secondary" loading={restore.isPending} onClick={() => restore.mutate(item.id)}><RotateCcw size={13} /> Откатить</Button>}</div><pre className="mt-4 max-h-52 overflow-auto whitespace-pre-wrap rounded-xl border border-line bg-canvas p-3 font-mono text-xs leading-relaxed text-ink/85">{item.system_prompt}</pre></article>) ?? null}{!versions.data?.length && !versions.isLoading ? <p className="py-16 text-center text-sm text-muted">Версии появятся после сохранения промпта.</p> : null}</div></Card></div>;
+}

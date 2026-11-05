@@ -20,6 +20,7 @@ import { SchedulesPage } from "./pages/SchedulesPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { MemoriesPage } from "./pages/MemoriesPage";
 import { ToolsPage } from "./pages/ToolsPage";
+import { PromptVersionsPage } from "./pages/PromptVersionsPage";
 
 function Splash() {
   return (
@@ -100,6 +101,7 @@ export default function App() {
             </RequireAuth>
           }
         />
+        <Route path="/agents/:id/versions" element={<RequireAuth><PromptVersionsPage /></RequireAuth>} />
         <Route
           path="/agents/:id/chat"
           element={

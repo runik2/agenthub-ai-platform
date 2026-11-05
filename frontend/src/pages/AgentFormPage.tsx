@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Save } from "lucide-react";
+import { ArrowLeft, History, Save } from "lucide-react";
 
 import { useAgent, useAgentMutations, useProviders } from "../api/hooks";
 import type { AgentPayload, AgentStatus } from "../api/types";
@@ -126,6 +126,7 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" }) {
           <ArrowLeft size={14} />
           {t("chat.backToAgents")}
         </Button>
+        {mode === "edit" && params.id ? <Button variant="secondary" size="sm" onClick={() => navigate(`/agents/${params.id}/versions`)}><History size={14} /> История промпта</Button> : null}
       </div>
 
       <div>

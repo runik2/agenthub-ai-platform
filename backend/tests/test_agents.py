@@ -61,6 +61,28 @@ async def test_slug_collision_gets_suffix(client: httpx.AsyncClient, auth_header
     assert second["slug"] == "duplicate-name-2"
 
 
+async def test_prompt_history_and_restore(client: httpx.AsyncClient, auth_headers: dict[str, str]) -> None:
+    agent = await create_agent(client, auth_headers, "Versioned Agent")
+    original = agent["system_prompt"]
+    changed = await client.patch(
+        f"/api/v1/agents/{agent['id']}",
+        json={"system_prompt": "You are the new version."},
+        headers=auth_headers,
+    )
+    assert changed.status_code == 200
+
+    history = await client.get(f"/api/v1/agents/{agent['id']}/prompt-versions", headers=auth_headers)
+    assert history.status_code == 200
+    assert [item["version"] for item in history.json()] == [2, 1]
+    first = next(item for item in history.json() if item["version"] == 1)
+    restored = await client.post(
+        f"/api/v1/agents/{agent['id']}/prompt-versions/{first['id']}/restore",
+        headers=auth_headers,
+    )
+    assert restored.status_code == 200
+    assert restored.json()["system_prompt"] == original
+
+
 async def test_six_templates_and_creation_from_template(
     client: httpx.AsyncClient, auth_headers: dict[str, str]
 ) -> None:
