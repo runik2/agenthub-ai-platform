@@ -11,7 +11,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { request } from "../api/client";
-import { Badge, Button, Card, Field, Input, Select } from "../components/ui";
+import { Badge, Button, Card, Field, Input, Select, Textarea } from "../components/ui";
 
 type Workflow = { id: string; name: string };
 type Endpoint = {
@@ -41,6 +41,8 @@ export function WebhooksPage() {
   const [allowedIps, setAllowedIps] = useState("");
   const [secret, setSecret] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [testPayload, setTestPayload] = useState('{"event":"test"}');
+  const [testMessage, setTestMessage] = useState("");
   const workflows = useQuery({
     queryKey: ["workflows"],
     queryFn: () => request<Workflow[]>("/workflows"),
@@ -91,6 +93,21 @@ export function WebhooksPage() {
       ),
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: ["webhook-deliveries", selectedId] }),
+  });
+  const test = useMutation({
+    mutationFn: (endpointId: string) => {
+      const parsed = JSON.parse(testPayload) as Record<string, unknown>;
+      return request<{ status: string; task_id: string }>(
+        `/webhooks/endpoints/${endpointId}/test`,
+        { method: "POST", body: { payload: parsed } },
+      );
+    },
+    onSuccess: (data) => {
+      setTestMessage(`Тест принят: ${data.status}`);
+      qc.invalidateQueries({ queryKey: ["webhook-deliveries", selectedId] });
+    },
+    onError: (error) =>
+      setTestMessage(error instanceof Error ? error.message : "Не удалось отправить тест"),
   });
   return (
     <div className="mx-auto max-w-6xl space-y-5">
@@ -220,6 +237,9 @@ export function WebhooksPage() {
                   >
                     История
                   </Button>
+                  <Button size="sm" variant="secondary" onClick={() => setSelectedId(endpoint.id)}>
+                    Тест
+                  </Button>
                 </div>
                 <code className="mt-3 block rounded-lg bg-canvas p-2 text-xs text-accent">
                   POST /api/v1/webhooks/incoming/{endpoint.slug}
@@ -230,6 +250,30 @@ export function WebhooksPage() {
                 </p>
                 {selectedId === endpoint.id ? (
                   <div className="mt-4 border-t border-line pt-3">
+                    <div className="mb-4 rounded-xl border border-accent/20 bg-accent/[.04] p-3">
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-accent">
+                        Test payload
+                      </p>
+                      <Textarea
+                        value={testPayload}
+                        onChange={(event) => setTestPayload(event.target.value)}
+                        className="mt-2 min-h-20 font-mono text-xs"
+                        aria-label="JSON test payload"
+                      />
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => test.mutate(endpoint.id)}
+                          loading={test.isPending}
+                        >
+                          Отправить тест
+                        </Button>
+                        <span className="text-[11px] text-muted">
+                          Тест проходит обычный task/approval flow.
+                        </span>
+                      </div>
+                      {testMessage ? <p className="mt-2 text-xs text-accent">{testMessage}</p> : null}
+                    </div>
                     <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted">
                       Последние доставки
                     </p>

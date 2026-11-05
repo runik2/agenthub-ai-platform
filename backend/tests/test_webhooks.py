@@ -104,6 +104,37 @@ async def test_webhook_respects_approval_steps_and_rejects_invalid_json(
     assert invalid_body_response.status_code == 400
 
 
+async def test_webhook_test_payload_uses_normal_task_and_delivery_flow(
+    client: httpx.AsyncClient, auth_headers: dict[str, str], monkeypatch
+) -> None:
+    class FakeQueue:
+        async def enqueue(self, *_args, **_kwargs) -> None:
+            return None
+
+    monkeypatch.setattr(webhooks, "get_queue", lambda: FakeQueue())
+    workflow = await client.post(
+        "/api/v1/workflows",
+        json={"name": "Test payload flow", "description": "", "enabled": True, "steps": []},
+        headers=auth_headers,
+    )
+    endpoint = await client.post(
+        "/api/v1/webhooks/endpoints",
+        json={"name": "Test endpoint", "slug": "test-payload", "workflow_id": workflow.json()["id"]},
+        headers=auth_headers,
+    )
+    tested = await client.post(
+        f"/api/v1/webhooks/endpoints/{endpoint.json()['id']}/test",
+        json={"payload": {"order_id": "demo-42"}},
+        headers=auth_headers,
+    )
+    assert tested.status_code == 202, tested.text
+    assert tested.json()["status"] == "accepted"
+    deliveries = await client.get(
+        f"/api/v1/webhooks/endpoints/{endpoint.json()['id']}/deliveries", headers=auth_headers
+    )
+    assert deliveries.json()[0]["payload"] == {"order_id": "demo-42"}
+
+
 async def test_failed_webhook_delivery_can_be_retried(
     client: httpx.AsyncClient, auth_headers: dict[str, str], monkeypatch
 ) -> None:

@@ -27,6 +27,16 @@ class WebhookCreated(WebhookOut):
     secret: str
 
 
+class WebhookTestPayload(BaseModel):
+    payload: dict = Field(default_factory=dict)
+
+
+class WebhookTestOut(BaseModel):
+    status: str
+    task_id: str
+    delivery_id: str
+
+
 class DeliveryOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str

@@ -18,7 +18,14 @@ from app.core.errors import AppError
 from app.db.models import IntegrationTool, Task, User, WebhookDelivery, WebhookEndpoint, Workflow
 from app.db.session import get_session
 from app.queue.runtime import get_queue
-from app.schemas.webhooks import DeliveryOut, WebhookCreate, WebhookCreated, WebhookOut
+from app.schemas.webhooks import (
+    DeliveryOut,
+    WebhookCreate,
+    WebhookCreated,
+    WebhookOut,
+    WebhookTestOut,
+    WebhookTestPayload,
+)
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 incoming_router = APIRouter(prefix="/webhooks", tags=["webhooks"])
@@ -166,6 +173,54 @@ async def retry_delivery(
             await session.commit()
     await session.refresh(delivery)
     return delivery
+
+
+@router.post("/endpoints/{endpoint_id}/test", response_model=WebhookTestOut, status_code=202)
+async def test_endpoint(
+    endpoint_id: str,
+    payload: WebhookTestPayload,
+    user: User = Depends(require_roles("admin", "manager", "operator")),
+    session: AsyncSession = Depends(get_session),
+) -> WebhookTestOut:
+    endpoint = await session.scalar(
+        select(WebhookEndpoint).where(
+            WebhookEndpoint.id == endpoint_id,
+            WebhookEndpoint.owner_id == workspace_owner_id(user),
+            WebhookEndpoint.enabled.is_(True),
+        )
+    )
+    if not endpoint:
+        raise AppError("WEBHOOK_NOT_FOUND", "Webhook endpoint not found", 404)
+    workflow = await session.get(Workflow, endpoint.workflow_id)
+    requires_approval = await workflow_needs_approval(session, workflow, endpoint.owner_id)
+    task = Task(
+        owner_id=endpoint.owner_id,
+        workflow_id=endpoint.workflow_id,
+        name=f"Webhook test: {endpoint.name}",
+        input=json.dumps(payload.payload, ensure_ascii=False),
+        requires_approval=requires_approval,
+        status="waiting_approval" if requires_approval else "pending",
+    )
+    delivery = WebhookDelivery(
+        endpoint_id=endpoint.id,
+        status="waiting_approval" if requires_approval else "accepted",
+        signature_valid=True,
+        payload=payload.payload,
+    )
+    session.add_all([task, delivery])
+    await session.flush()
+    delivery.task_id = task.id
+    endpoint.last_received_at = datetime.now(UTC)
+    await session.commit()
+    if not requires_approval:
+        try:
+            await get_queue().enqueue("execute_task", {"task_id": task.id})
+        except Exception as exc:
+            task.status, task.error = "failed", str(exc)
+            delivery.status, delivery.error = "failed", str(exc)
+            await session.commit()
+            raise AppError("WEBHOOK_QUEUE_ERROR", "Webhook test could not be queued", 503) from exc
+    return WebhookTestOut(status=delivery.status, task_id=task.id, delivery_id=delivery.id)
 
 
 @incoming_router.post("/incoming/{slug}")
