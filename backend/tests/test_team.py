@@ -45,3 +45,29 @@ async def test_non_admin_cannot_access_team(client: httpx.AsyncClient, auth_head
         "/api/v1/team", headers={"Authorization": f"Bearer {login.json()['access_token']}"}
     )
     assert response.status_code == 403
+
+
+async def test_viewer_cannot_change_workspace_configuration(
+    client: httpx.AsyncClient, auth_headers: dict[str, str]
+) -> None:
+    created = await client.post(
+        "/api/v1/team",
+        json={
+            "email": "viewer@example.com",
+            "full_name": "Viewer",
+            "password": "viewer123",
+            "role": "viewer",
+        },
+        headers=auth_headers,
+    )
+    assert created.status_code == 201, created.text
+    login = await client.post(
+        "/api/v1/auth/login", json={"email": "viewer@example.com", "password": "viewer123"}
+    )
+    viewer_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    response = await client.post(
+        "/api/v1/workflows",
+        json={"name": "Should be denied", "description": "", "enabled": True, "steps": []},
+        headers=viewer_headers,
+    )
+    assert response.status_code == 403

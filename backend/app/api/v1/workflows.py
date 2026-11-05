@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_roles
 from app.db.models import User, Workflow
 from app.db.session import get_session
 from app.queue.runtime import get_queue
@@ -27,7 +27,7 @@ async def list_workflows(
 @router.post("", response_model=WorkflowOut, status_code=201)
 async def create_workflow(
     payload: WorkflowCreate,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
 ):
     wf = Workflow(owner_id=user.id, **payload.model_dump())
@@ -54,7 +54,7 @@ async def get_workflow(
 async def update_workflow(
     workflow_id: str,
     payload: WorkflowCreate,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
 ):
     wf = await session.scalar(
@@ -73,7 +73,9 @@ async def update_workflow(
 
 @router.delete("/{workflow_id}", status_code=204)
 async def delete_workflow(
-    workflow_id: str, user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)
+    workflow_id: str,
+    user: User = Depends(require_roles("admin", "manager")),
+    session: AsyncSession = Depends(get_session),
 ):
     wf = await session.scalar(
         select(Workflow).where(Workflow.id == workflow_id, Workflow.owner_id == user.id)
@@ -88,7 +90,9 @@ async def delete_workflow(
 
 @router.post("/{workflow_id}/run", status_code=202)
 async def run_workflow(
-    workflow_id: str, user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)
+    workflow_id: str,
+    user: User = Depends(require_roles("admin", "manager", "operator")),
+    session: AsyncSession = Depends(get_session),
 ):
     wf = await session.scalar(
         select(Workflow).where(Workflow.id == workflow_id, Workflow.owner_id == user.id)

@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, write_audit
+from app.api.deps import get_current_user, require_roles, write_audit
 from app.config import get_settings
 from app.core.crypto import encrypt_value, key_hint
 from app.core.errors import AppError
@@ -94,7 +94,7 @@ async def list_providers(
 async def create_provider(
     payload: ProviderCreate,
     request: Request,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
 ) -> ProviderOut:
     settings = get_settings()
@@ -139,7 +139,7 @@ async def update_provider(
     provider_id: str,
     payload: ProviderUpdate,
     request: Request,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
 ) -> ProviderOut:
     provider = await _get_provider(session, provider_id)
@@ -165,7 +165,7 @@ async def update_provider(
 async def delete_provider(
     provider_id: str,
     request: Request,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
 ) -> StatusResponse:
     provider = await _get_provider(session, provider_id)
@@ -179,7 +179,7 @@ async def delete_provider(
 async def test_connection(
     provider_id: str,
     request: Request,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
 ) -> ConnectionResult:
     provider = await _get_provider(session, provider_id)
@@ -207,7 +207,7 @@ async def test_connection(
 @router.post("/{provider_id}/refresh-models", response_model=ModelsResult)
 async def refresh_models(
     provider_id: str,
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
 ) -> ModelsResult:
     provider = await _get_provider(session, provider_id)

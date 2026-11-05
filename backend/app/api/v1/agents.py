@@ -5,7 +5,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, write_audit
+from app.api.deps import get_current_user, require_roles, write_audit
 from app.core.errors import AppError
 from app.core.pagination import Pagination, paginate
 from app.db.models import Agent, Conversation, PromptVersion, User
@@ -111,7 +111,7 @@ async def list_agents(
 async def create_agent(
     payload: AgentCreate,
     request: Request,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
 ) -> AgentOut:
     agent = Agent(
@@ -132,7 +132,7 @@ async def create_agent(
 async def create_from_template(
     template_slug: str,
     request: Request,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
 ) -> AgentOut:
     template = get_template(template_slug)
@@ -185,7 +185,7 @@ async def update_agent(
     agent_id: str,
     payload: AgentUpdate,
     request: Request,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
 ) -> AgentOut:
     agent = await get_owned_agent(session, user, agent_id)
@@ -234,7 +234,7 @@ async def restore_prompt_version(
     version_id: str,
     request: Request,
     payload: PromptRollback = PromptRollback(),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
 ) -> AgentOut:
     agent = await get_owned_agent(session, user, agent_id)
@@ -259,7 +259,7 @@ async def restore_prompt_version(
 async def duplicate_agent(
     agent_id: str,
     request: Request,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
 ) -> AgentOut:
     source = await get_owned_agent(session, user, agent_id)
@@ -293,7 +293,7 @@ async def delete_agent(
     agent_id: str,
     request: Request,
     force: bool = Query(default=False),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
 ) -> StatusResponse:
     agent = await get_owned_agent(session, user, agent_id)

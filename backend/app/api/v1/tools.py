@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_roles
 from app.core.errors import AppError
 from app.db.models import IntegrationTool, User
 from app.db.session import get_session
@@ -49,7 +49,7 @@ async def list_tools(user: User = Depends(get_current_user), session: AsyncSessi
 @router.post("", response_model=ToolOut, status_code=201)
 async def create_tool(
     payload: ToolCreate,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
 ):
     validate_target(payload.base_url, payload.allowed_path)
@@ -64,7 +64,7 @@ async def create_tool(
 async def update_tool(
     tool_id: str,
     payload: ToolUpdate,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
 ):
     tool = await owned_tool(tool_id, user, session)
@@ -80,7 +80,7 @@ async def update_tool(
 @router.delete("/{tool_id}", status_code=204)
 async def delete_tool(
     tool_id: str,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_roles("admin", "manager")),
     session: AsyncSession = Depends(get_session),
 ):
     await session.delete(await owned_tool(tool_id, user, session))

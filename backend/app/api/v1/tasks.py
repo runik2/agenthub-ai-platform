@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_roles
 from app.db.models import Agent, IntegrationTool, Task, TaskRun, User, Workflow
 from app.db.session import get_session
 from app.queue.runtime import get_queue
@@ -29,7 +29,9 @@ async def list_tasks(
 
 @router.post("", response_model=TaskOut, status_code=201)
 async def create_task(
-    payload: TaskCreate, user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)
+    payload: TaskCreate,
+    user: User = Depends(require_roles("admin", "manager", "operator")),
+    session: AsyncSession = Depends(get_session),
 ):
     values = payload.model_dump()
     if values["agent_id"] and not await session.scalar(
@@ -80,7 +82,9 @@ async def create_task(
 
 @router.get("/{task_id}", response_model=TaskOut)
 async def get_task(
-    task_id: str, user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)
+    task_id: str,
+    user: User = Depends(require_roles("admin", "manager", "operator")),
+    session: AsyncSession = Depends(get_session),
 ):
     task = await session.scalar(select(Task).where(Task.id == task_id, Task.owner_id == user.id))
     if not task:
@@ -92,7 +96,9 @@ async def get_task(
 
 @router.post("/{task_id}/run", response_model=TaskOut)
 async def run_task(
-    task_id: str, user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)
+    task_id: str,
+    user: User = Depends(require_roles("admin", "manager", "operator")),
+    session: AsyncSession = Depends(get_session),
 ):
     task = await session.scalar(select(Task).where(Task.id == task_id, Task.owner_id == user.id))
     if not task:
@@ -116,7 +122,9 @@ async def run_task(
 
 @router.post("/{task_id}/approve", response_model=TaskOut)
 async def approve_task(
-    task_id: str, user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)
+    task_id: str,
+    user: User = Depends(require_roles("admin", "manager", "operator")),
+    session: AsyncSession = Depends(get_session),
 ):
     task = await session.scalar(select(Task).where(Task.id == task_id, Task.owner_id == user.id))
     if not task:
@@ -140,7 +148,9 @@ async def approve_task(
 
 @router.post("/{task_id}/reject", response_model=TaskOut)
 async def reject_task(
-    task_id: str, user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)
+    task_id: str,
+    user: User = Depends(require_roles("admin", "manager", "operator")),
+    session: AsyncSession = Depends(get_session),
 ):
     task = await session.scalar(select(Task).where(Task.id == task_id, Task.owner_id == user.id))
     if not task:

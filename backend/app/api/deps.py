@@ -33,6 +33,20 @@ async def require_admin(user: User = Depends(get_current_user)) -> User:
     return user
 
 
+def require_roles(*roles: str):
+    """Build a dependency that enforces the workspace role policy."""
+
+    allowed = set(roles)
+
+    async def checker(user: User = Depends(get_current_user)) -> User:
+        role = user.role if user.role in {"admin", "manager", "operator", "viewer"} else "viewer"
+        if role not in allowed:
+            raise AppError("FORBIDDEN", "You do not have permission for this action", 403)
+        return user
+
+    return checker
+
+
 def client_meta(request: Request) -> tuple[str | None, str | None]:
     ip = request.client.host if request.client else None
     return ip, request.headers.get("user-agent")
