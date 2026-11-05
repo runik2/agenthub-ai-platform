@@ -132,3 +132,4 @@ async def test_economics_includes_workflow_breakdown(client, auth_headers) -> No
     assert response.status_code == 200
     payload = response.json()
     assert isinstance(payload["workflows"], list)
+    assert isinstance(payload["users"], list)

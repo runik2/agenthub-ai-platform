@@ -27,6 +27,13 @@ type Economics = {
     tokens: number;
     cost: number;
   }[];
+  users: {
+    name: string;
+    email: string;
+    requests: number;
+    tokens: number;
+    cost: number;
+  }[];
 };
 type WorkflowPerformance = {
   days: number;
@@ -404,6 +411,36 @@ export function AnalyticsPage() {
               <p className="py-8 text-center text-sm text-muted">
                 Расходы появятся после запуска workflow с LLM-шагом.
               </p>
+            ) : null}
+          </div>
+        </Card>
+        <Card>
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-muted">
+              Team economics
+            </p>
+            <h2 className="mt-1 font-semibold text-ink">Стоимость по пользователям</h2>
+            <p className="mt-1 text-sm text-muted">Кто формирует расход workspace.</p>
+          </div>
+          <div className="mt-4 space-y-2">
+            {economics.data?.users.map((member) => (
+              <div
+                key={member.email}
+                className="flex items-center gap-3 rounded-xl border border-line bg-card/50 p-3"
+              >
+                <span className="grid h-8 w-8 place-items-center rounded-lg bg-accent/10 text-accent">
+                  {member.name.slice(0, 1).toUpperCase()}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-ink">{member.name}</span>
+                  <span className="block truncate text-[11px] text-muted">{member.email}</span>
+                </span>
+                <span className="text-xs text-muted">{member.requests} req</span>
+                <span className="font-semibold tabular-nums text-ink">${member.cost.toFixed(4)}</span>
+              </div>
+            ))}
+            {!economics.data?.users.length ? (
+              <p className="py-8 text-center text-sm text-muted">Данных по пользователям пока нет.</p>
             ) : null}
           </div>
         </Card>

@@ -39,8 +39,8 @@
 - Память агентов и RAG: ручные факты, загрузка TXT/MD/CSV/JSON/PDF/DOCX, импорт веб-страниц,
   чанкинг, embeddings, семантический поиск, источники ответа и версии документов.
 - Evaluations: контрольные кейсы, batch-прогоны, pass rate, latency/cost и сравнение моделей.
-- Экономика workspace: токены и стоимость по моделям, агентам и workflow, месячные бюджеты,
-  warning/exceeded статусы и fallback-провайдер.
+- Экономика workspace: токены и стоимость по моделям, агентам, пользователям и workflow,
+  месячные бюджеты, warning/exceeded статусы и fallback-провайдер.
 - Production-наблюдаемость: readiness DB/queue, Prometheus metrics, JSON-логи с correlation id,
   Grafana dashboard, live task/approval polling, task traces, integration journal и PostgreSQL backup script.
 - Переключатель RU/EN (localStorage, по умолчанию RU), светлая/тёмная тема, адаптив до 390px.

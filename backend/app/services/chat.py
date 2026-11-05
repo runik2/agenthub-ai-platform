@@ -215,6 +215,7 @@ async def send_message(
         session.add(
             LLMUsage(
                 conversation_id=conversation.id,
+                user_id=user.id,
                 message_id=user_message.id,
                 agent_id=agent.id,
                 provider_id=provider.id,
@@ -278,6 +279,7 @@ async def send_message(
     session.add(
         LLMUsage(
             conversation_id=conversation.id,
+            user_id=user.id,
             message_id=assistant_message.id,
             agent_id=agent.id,
             provider_id=provider.id,
