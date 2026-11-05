@@ -201,10 +201,22 @@ export function AppShell({ children }: { children: ReactNode }) {
         <ul className="space-y-1">
           {soonNav.map((item) => (
             <li key={item.to}>
-              {item.to ? <NavLink to={item.to} className="flex items-center gap-2 rounded-lg px-2 py-2 text-[13px] text-muted hover:bg-raised hover:text-ink">
-                <item.icon size={15} />
-                <span className="truncate">{item.label ?? t(item.key ?? "")}</span>
-              </NavLink> : null}
+              {item.to ? (
+                <NavLink
+                  to={item.to}
+                  className={({ isActive }) =>
+                    cn(
+                      "flex items-center gap-2 rounded-lg px-2 py-2 text-[13px] transition-colors",
+                      isActive
+                        ? "bg-accent/10 text-ink shadow-[inset_2px_0_0_var(--accent)]"
+                        : "text-muted hover:bg-raised hover:text-ink",
+                    )
+                  }
+                >
+                  <item.icon size={15} />
+                  <span className="truncate">{item.label ?? t(item.key ?? "")}</span>
+                </NavLink>
+              ) : null}
             </li>
           ))}
         </ul>

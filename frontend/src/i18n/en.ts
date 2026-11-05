@@ -46,7 +46,7 @@ export const en: Dict = {
     providers: "Providers",
     logs: "Audit log",
     settings: "Settings",
-    upcoming: "Next stages",
+    upcoming: "Platform modules",
     tasks: "Tasks",
     workflows: "Workflows",
     tools: "Tools",

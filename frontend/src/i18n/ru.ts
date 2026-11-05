@@ -44,7 +44,7 @@ export const ru = {
     providers: "Провайдеры",
     logs: "Журнал",
     settings: "Настройки",
-    upcoming: "Следующие этапы",
+    upcoming: "Модули платформы",
     tasks: "Задания",
     workflows: "Workflow",
     tools: "Инструменты",
