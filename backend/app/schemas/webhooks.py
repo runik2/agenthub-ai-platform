@@ -29,6 +29,7 @@ class DeliveryOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
     endpoint_id: str
+    event_id: str | None
     task_id: str | None
     status: str
     signature_valid: bool

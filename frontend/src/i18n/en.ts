@@ -285,6 +285,7 @@ export const en: Dict = {
     INVALID_TWO_FACTOR: "Invalid two-factor authentication code",
     WEBHOOK_PAYLOAD_TOO_LARGE: "The webhook payload is too large",
     INVALID_WEBHOOK_PAYLOAD: "The webhook must contain valid JSON",
+    INVALID_WEBHOOK_EVENT_ID: "The webhook event id is too long",
     USER_DISABLED: "This account is disabled",
     SETUP_ALREADY_DONE: "An administrator already exists",
     VALIDATION_ERROR: "Check the fields you entered",

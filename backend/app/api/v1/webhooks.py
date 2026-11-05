@@ -163,6 +163,7 @@ async def receive_webhook(
     slug: str,
     request: Request,
     x_agenthub_signature: str | None = Header(default=None),
+    x_agenthub_event_id: str | None = Header(default=None),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, str]:
     endpoint = await session.scalar(
@@ -170,6 +171,8 @@ async def receive_webhook(
     )
     if not endpoint:
         raise AppError("WEBHOOK_NOT_FOUND", "Webhook endpoint not found", 404)
+    if x_agenthub_event_id and len(x_agenthub_event_id) > 200:
+        raise AppError("INVALID_WEBHOOK_EVENT_ID", "Webhook event id is too long", 422)
     max_body = max(1, get_settings().webhook_max_body_bytes)
     content_length = request.headers.get("content-length")
     if content_length and content_length.isdigit() and int(content_length) > max_body:
@@ -196,8 +199,18 @@ async def receive_webhook(
         payload = json.loads(raw.decode() or "{}") if raw else {}
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise AppError("INVALID_WEBHOOK_PAYLOAD", "Webhook body must be valid JSON", 400) from exc
+    if x_agenthub_event_id:
+        existing = await session.scalar(
+            select(WebhookDelivery).where(
+                WebhookDelivery.endpoint_id == endpoint.id,
+                WebhookDelivery.event_id == x_agenthub_event_id,
+            )
+        )
+        if existing:
+            return {"status": "duplicate", "task_id": existing.task_id or ""}
     delivery = WebhookDelivery(
         endpoint_id=endpoint.id,
+        event_id=x_agenthub_event_id,
         status="rejected" if not valid else "accepted",
         signature_valid=valid,
         payload=payload if isinstance(payload, dict) else {"value": payload},

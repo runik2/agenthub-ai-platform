@@ -340,6 +340,7 @@ class WebhookDelivery(TimestampMixin, Base):
     endpoint_id: Mapped[str] = mapped_column(
         ForeignKey("webhook_endpoints.id", ondelete="CASCADE"), index=True
     )
+    event_id: Mapped[str | None] = mapped_column(String(200), nullable=True, index=True)
     task_id: Mapped[str | None] = mapped_column(ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     signature_valid: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

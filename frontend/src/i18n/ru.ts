@@ -283,6 +283,7 @@ export const ru = {
     INVALID_TWO_FACTOR: "Неверный код двухфакторной аутентификации",
     WEBHOOK_PAYLOAD_TOO_LARGE: "Webhook-пayload слишком большой",
     INVALID_WEBHOOK_PAYLOAD: "Webhook должен содержать корректный JSON",
+    INVALID_WEBHOOK_EVENT_ID: "Идентификатор webhook-события слишком длинный",
     USER_DISABLED: "Учётная запись отключена",
     SETUP_ALREADY_DONE: "Администратор уже создан",
     VALIDATION_ERROR: "Проверьте заполнение полей",

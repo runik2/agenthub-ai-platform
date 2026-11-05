@@ -93,9 +93,9 @@ async def test_webhook_respects_approval_steps_and_rejects_invalid_json(
     assert invalid.status_code == 401
 
     invalid_body = b"not-json"
-    valid_invalid_body_signature = "sha256=" + hmac.new(
-        secret.encode(), invalid_body, hashlib.sha256
-    ).hexdigest()
+    valid_invalid_body_signature = (
+        "sha256=" + hmac.new(secret.encode(), invalid_body, hashlib.sha256).hexdigest()
+    )
     invalid_body_response = await client.post(
         "/api/v1/webhooks/incoming/approval-orders",
         content=invalid_body,
@@ -148,3 +148,37 @@ async def test_failed_webhook_delivery_can_be_retried(
     )
     assert retried.status_code == 200, retried.text
     assert retried.json()["status"] == "retrying"
+
+
+async def test_webhook_event_id_is_idempotent(
+    client: httpx.AsyncClient, auth_headers: dict[str, str], monkeypatch
+) -> None:
+    class FakeQueue:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def enqueue(self, *_args, **_kwargs) -> None:
+            self.calls += 1
+
+    queue = FakeQueue()
+    monkeypatch.setattr(webhooks, "get_queue", lambda: queue)
+    workflow = await client.post(
+        "/api/v1/workflows",
+        json={"name": "Idempotent workflow", "description": "", "enabled": True, "steps": []},
+        headers=auth_headers,
+    )
+    endpoint_response = await client.post(
+        "/api/v1/webhooks/endpoints",
+        json={"name": "Idempotent", "slug": "idempotent", "workflow_id": workflow.json()["id"]},
+        headers=auth_headers,
+    )
+    endpoint = endpoint_response.json()
+    body = b'{"event":"created"}'
+    signature = "sha256=" + hmac.new(endpoint["secret"].encode(), body, hashlib.sha256).hexdigest()
+    headers = {"X-AgentHub-Signature": signature, "X-AgentHub-Event-ID": "evt-42"}
+    first = await client.post("/api/v1/webhooks/incoming/idempotent", content=body, headers=headers)
+    second = await client.post("/api/v1/webhooks/incoming/idempotent", content=body, headers=headers)
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.json()["status"] == "duplicate"
+    assert queue.calls == 1
