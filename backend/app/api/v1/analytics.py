@@ -283,6 +283,20 @@ async def economics(
             .order_by(func.sum(LLMUsage.cost).desc())
         )
     ).all()
+    workflow_rows = (
+        await session.execute(
+            select(
+                LLMUsage.workflow_id,
+                func.count(LLMUsage.id),
+                func.sum(LLMUsage.total_tokens),
+                func.sum(LLMUsage.cost),
+            )
+            .join(Agent, Agent.id == LLMUsage.agent_id)
+            .where(*scope, LLMUsage.workflow_id.is_not(None))
+            .group_by(LLMUsage.workflow_id)
+            .order_by(func.sum(LLMUsage.cost).desc())
+        )
+    ).all()
     return {
         "days": days,
         "models": [
@@ -303,6 +317,15 @@ async def economics(
                 "cost": float(row[3] or 0),
             }
             for row in agent_rows
+        ],
+        "workflows": [
+            {
+                "workflow_id": row[0],
+                "requests": int(row[1] or 0),
+                "tokens": int(row[2] or 0),
+                "cost": float(row[3] or 0),
+            }
+            for row in workflow_rows
         ],
     }
 

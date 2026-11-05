@@ -124,3 +124,11 @@ async def test_workflow_performance_analytics(client, auth_headers) -> None:
     payload = response.json()
     assert {"days", "totals", "steps"} <= payload.keys()
     assert {"runs", "steps", "failed_steps", "avg_duration_ms", "p95_duration_ms"} <= payload["totals"].keys()
+
+
+@pytest.mark.asyncio
+async def test_economics_includes_workflow_breakdown(client, auth_headers) -> None:
+    response = await client.get("/api/v1/analytics/economics", headers=auth_headers)
+    assert response.status_code == 200
+    payload = response.json()
+    assert isinstance(payload["workflows"], list)

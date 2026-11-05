@@ -176,6 +176,7 @@ async def _execute_steps(
                 session.add(
                     LLMUsage(
                         agent_id=agent.id,
+                        workflow_id=workflow_id if workflow_id != "unknown" else None,
                         provider_id=provider.id,
                         model_name=answer.model,
                         tokens_in=answer.tokens_in,

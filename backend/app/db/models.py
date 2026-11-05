@@ -182,6 +182,7 @@ class LLMUsage(TimestampMixin, Base):
     __tablename__ = "llm_usage"
 
     conversation_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    workflow_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     message_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     agent_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     provider_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
