@@ -14,7 +14,15 @@ from app.core.errors import AppError
 from app.core.security import create_access_token, hash_password, verify_password
 from app.db.models import RefreshSession, User
 from app.db.session import get_session
-from app.schemas.auth import LoginRequest, RefreshRequest, SetupRequest, SetupStatus, TokenResponse, UserOut
+from app.schemas.auth import (
+    LoginRequest,
+    PasswordChange,
+    RefreshRequest,
+    SetupRequest,
+    SetupStatus,
+    TokenResponse,
+    UserOut,
+)
 from app.services.bootstrap import user_count
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -145,6 +153,31 @@ async def logout_all(
     for row in rows:
         row.revoked_at = now
     await write_audit(session, request, user.id, "auth.logout_all", "user", user.id, {"sessions": len(rows)})
+    await session.commit()
+    return {"status": "ok", "revoked": str(len(rows))}
+
+
+@router.post("/password")
+async def change_password(
+    payload: PasswordChange,
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, str]:
+    if not verify_password(payload.current_password, user.hashed_password):
+        raise AppError("INVALID_PASSWORD", "Current password is incorrect", 400)
+    user.hashed_password = hash_password(payload.new_password)
+    rows = (
+        await session.scalars(
+            select(RefreshSession).where(
+                RefreshSession.user_id == user.id, RefreshSession.revoked_at.is_(None)
+            )
+        )
+    ).all()
+    now = datetime.now(UTC)
+    for row in rows:
+        row.revoked_at = now
+    await write_audit(session, request, user.id, "auth.password_changed", "user", user.id)
     await session.commit()
     return {"status": "ok", "revoked": str(len(rows))}
 

@@ -46,12 +46,44 @@ async def test_logout_all_revokes_refresh_sessions(client: httpx.AsyncClient) ->
     )
     token = login.json()["access_token"]
     refresh_token = login.json()["refresh_token"]
-    response = await client.post(
-        "/api/v1/auth/logout-all", headers={"Authorization": f"Bearer {token}"}
-    )
+    response = await client.post("/api/v1/auth/logout-all", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200
     revoked = await client.post("/api/v1/auth/refresh", json={"refresh_token": refresh_token})
     assert revoked.status_code == 401
+
+
+async def test_password_change_revokes_sessions(client: httpx.AsyncClient) -> None:
+    admin_login = await client.post(
+        "/api/v1/auth/login", json={"email": "admin@test.local", "password": "admin12345"}
+    )
+    admin_headers = {"Authorization": f"Bearer {admin_login.json()['access_token']}"}
+    created = await client.post(
+        "/api/v1/team",
+        json={
+            "email": "password-test@example.com",
+            "full_name": "Password Test",
+            "password": "old-pass123",
+            "role": "viewer",
+        },
+        headers=admin_headers,
+    )
+    assert created.status_code == 201
+    login = await client.post(
+        "/api/v1/auth/login", json={"email": "password-test@example.com", "password": "old-pass123"}
+    )
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    old_refresh = login.json()["refresh_token"]
+    changed = await client.post(
+        "/api/v1/auth/password",
+        json={"current_password": "old-pass123", "new_password": "new-pass123"},
+        headers=headers,
+    )
+    assert changed.status_code == 200
+    assert (await client.post("/api/v1/auth/refresh", json={"refresh_token": old_refresh})).status_code == 401
+    relogin = await client.post(
+        "/api/v1/auth/login", json={"email": "password-test@example.com", "password": "new-pass123"}
+    )
+    assert relogin.status_code == 200
 
 
 async def test_login_with_wrong_password(client: httpx.AsyncClient) -> None:
