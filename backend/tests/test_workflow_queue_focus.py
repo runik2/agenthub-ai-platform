@@ -17,6 +17,29 @@ async def test_workflow_condition_and_safe_tools() -> None:
     assert result == "ok"
 
 
+@pytest.mark.asyncio
+async def test_workflow_condition_routes_to_named_branch() -> None:
+    workflow = type(
+        "WorkflowStub",
+        (),
+        {
+            "owner_id": "owner",
+            "steps": [
+                {
+                    "type": "condition",
+                    "condition": {"type": "if_contains", "value": "approved"},
+                    "on_true": "approved",
+                    "on_false": "rejected",
+                },
+                {"type": "tool", "tool": "text_template", "template": "YES: {input}", "branch": "approved"},
+                {"type": "tool", "tool": "text_template", "template": "NO: {input}", "branch": "rejected"},
+            ],
+        },
+    )()
+    result = await execute_workflow(None, workflow, "approved order")
+    assert result == "YES: approved order"
+
+
 def test_arq_queue_lifecycle_is_local_import_safe() -> None:
     queue = ArqTaskQueue("redis://localhost:6379/0")
     queue.start()

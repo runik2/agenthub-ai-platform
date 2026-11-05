@@ -40,6 +40,8 @@ class Step(BaseModel):
     allowlist: list[str] = Field(default_factory=list)
     condition: str | dict | None = None
     branch: str | None = None
+    on_true: str = "true"
+    on_false: str = "false"
 
 
 class WorkflowCreate(BaseModel):

@@ -12,7 +12,19 @@ from app.services import llm
 
 async def execute_workflow(session: AsyncSession, workflow: Workflow, initial: str) -> str:
     value = initial
+    active_branch: str | None = None
     for step in workflow.steps or []:
+        if step.get("type") == "condition":
+            condition = step.get("condition") or {}
+            if isinstance(condition, str):
+                condition = {"type": "if_contains", "value": condition}
+            condition_type = condition.get("type", "if_contains")
+            expected = str(condition.get("value", ""))
+            matches = expected in value if condition_type == "if_contains" else expected not in value
+            active_branch = step.get("on_true", "true") if matches else step.get("on_false", "false")
+            continue
+        if step.get("branch") and step.get("branch") != active_branch:
+            continue
         if step.get("type") == "approval":
             # The task was held before execution. This marker documents the safe boundary in the graph.
             continue
