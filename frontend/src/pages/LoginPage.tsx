@@ -46,8 +46,8 @@ export function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [otpCode, setOtpCode] = useState("");
-  const [resetMode, setResetMode] = useState(false);
-  const [resetToken, setResetToken] = useState("");
+  const [resetToken, setResetToken] = useState(() => new URLSearchParams(window.location.search).get("reset_token") ?? "");
+  const [resetMode, setResetMode] = useState(() => Boolean(new URLSearchParams(window.location.search).get("reset_token")));
   const [newPassword, setNewPassword] = useState("");
   const [resetNotice, setResetNotice] = useState("");
   const resetRequest = useMutation({

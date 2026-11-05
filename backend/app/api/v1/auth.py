@@ -33,6 +33,7 @@ from app.schemas.auth import (
     UserOut,
 )
 from app.services.bootstrap import user_count
+from app.services.email import send_password_reset_email
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -236,10 +237,13 @@ async def request_password_reset(
             )
         )
         await write_audit(session, request, user.id, "auth.password_reset_requested", "user", user.id)
-        # Local mode exposes a token for the demo UI; production should deliver it by email.
+        await session.commit()
+        await send_password_reset_email(user.email, raw)
+        # Local mode exposes a token for the demo UI; production delivers it by email.
         if get_settings().app_mode == "local":
             response["dev_token"] = raw
-    await session.commit()
+    else:
+        await session.commit()
     return response
 
 

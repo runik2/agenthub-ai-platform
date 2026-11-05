@@ -29,6 +29,14 @@ class Settings(BaseSettings):
     access_token_ttl_minutes: int = 30
     refresh_token_ttl_days: int = 30
     password_reset_ttl_minutes: int = 30
+    password_reset_frontend_url: str = "http://localhost:5173/login"
+
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from_email: str = "no-reply@agenthub.local"
+    smtp_use_tls: bool = True
 
     secret_encryption_key: str = ""
 
