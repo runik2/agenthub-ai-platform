@@ -115,3 +115,12 @@ async def test_analytics_export(client, auth_headers) -> None:
     response = await client.get("/api/v1/analytics/export?format=csv", headers=auth_headers)
     assert response.status_code == 200
     assert "tasks,workflows,schedules,task_runs,days" in response.text
+
+
+@pytest.mark.asyncio
+async def test_workflow_performance_analytics(client, auth_headers) -> None:
+    response = await client.get("/api/v1/analytics/workflow-performance", headers=auth_headers)
+    assert response.status_code == 200
+    payload = response.json()
+    assert {"days", "totals", "steps"} <= payload.keys()
+    assert {"runs", "steps", "failed_steps", "avg_duration_ms", "p95_duration_ms"} <= payload["totals"].keys()

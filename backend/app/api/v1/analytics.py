@@ -12,7 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_roles, workspace_owner_id
-from app.db.models import Agent, Conversation, LLMProvider, LLMUsage, Message, User
+from app.db.models import Agent, Conversation, LLMProvider, LLMUsage, Message, Task, TaskRun, User
 from app.db.session import get_session
 from app.services.budget import current_budget
 
@@ -304,4 +304,69 @@ async def economics(
             }
             for row in agent_rows
         ],
+    }
+
+
+@router.get("/workflow-performance")
+async def workflow_performance(
+    days: int = Query(default=30, ge=1, le=365),
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    since = datetime.now(UTC) - timedelta(days=days)
+    runs = (
+        await session.scalars(
+            select(TaskRun)
+            .join(Task, Task.id == TaskRun.task_id)
+            .where(Task.owner_id == workspace_owner_id(user), TaskRun.created_at >= since)
+            .order_by(TaskRun.created_at.desc())
+        )
+    ).all()
+    grouped: dict[str, list[dict]] = {}
+    total_durations: list[float] = []
+    failed_steps = 0
+    for run in runs:
+        for step in run.steps or []:
+            step_type = str(step.get("type") or "unknown")
+            duration = float(step.get("duration_ms") or 0)
+            entry = {
+                "duration_ms": duration,
+                "error": bool(step.get("error")),
+                "output": str(step.get("output") or ""),
+            }
+            grouped.setdefault(step_type, []).append(entry)
+            total_durations.append(duration)
+            failed_steps += int(entry["error"])
+
+    def percentile(values: list[float], fraction: float) -> float:
+        if not values:
+            return 0.0
+        ordered = sorted(values)
+        return ordered[min(len(ordered) - 1, int((len(ordered) - 1) * fraction))]
+
+    step_rows = []
+    for step_type, entries in sorted(grouped.items(), key=lambda item: -len(item[1])):
+        durations = [entry["duration_ms"] for entry in entries]
+        step_rows.append(
+            {
+                "type": step_type,
+                "runs": len(entries),
+                "errors": sum(int(entry["error"]) for entry in entries),
+                "avg_duration_ms": round(sum(durations) / len(durations), 1),
+                "p95_duration_ms": round(percentile(durations, 0.95), 1),
+                "last_output": entries[0]["output"][:160],
+            }
+        )
+    return {
+        "days": days,
+        "totals": {
+            "runs": len(runs),
+            "steps": len(total_durations),
+            "failed_steps": failed_steps,
+            "avg_duration_ms": round(sum(total_durations) / len(total_durations), 1)
+            if total_durations
+            else 0,
+            "p95_duration_ms": round(percentile(total_durations, 0.95), 1),
+        },
+        "steps": step_rows,
     }
