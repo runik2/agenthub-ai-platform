@@ -209,3 +209,63 @@ async def overview(
             for row in provider_rows
         ],
     }
+
+
+@router.get("/economics")
+async def economics(
+    days: int = Query(default=30, ge=1, le=365),
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    since = datetime.now(UTC) - timedelta(days=days)
+    scope = (
+        LLMUsage.agent_id.in_(select(Agent.id).where(Agent.owner_id == user.id)),
+        LLMUsage.created_at >= since,
+    )
+    model_rows = (
+        await session.execute(
+            select(
+                LLMUsage.model_name,
+                func.count(LLMUsage.id),
+                func.sum(LLMUsage.total_tokens),
+                func.sum(LLMUsage.cost),
+                func.avg(LLMUsage.latency_ms),
+            )
+            .where(*scope)
+            .group_by(LLMUsage.model_name)
+            .order_by(func.sum(LLMUsage.cost).desc())
+        )
+    ).all()
+    agent_rows = (
+        await session.execute(
+            select(
+                Agent.name, func.count(LLMUsage.id), func.sum(LLMUsage.total_tokens), func.sum(LLMUsage.cost)
+            )
+            .join(LLMUsage, LLMUsage.agent_id == Agent.id)
+            .where(*scope)
+            .group_by(Agent.id, Agent.name)
+            .order_by(func.sum(LLMUsage.cost).desc())
+        )
+    ).all()
+    return {
+        "days": days,
+        "models": [
+            {
+                "model": row[0] or "unknown",
+                "requests": int(row[1] or 0),
+                "tokens": int(row[2] or 0),
+                "cost": float(row[3] or 0),
+                "avg_latency_ms": round(float(row[4] or 0), 1),
+            }
+            for row in model_rows
+        ],
+        "agents": [
+            {
+                "name": row[0],
+                "requests": int(row[1] or 0),
+                "tokens": int(row[2] or 0),
+                "cost": float(row[3] or 0),
+            }
+            for row in agent_rows
+        ],
+    }

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from uuid import uuid4
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -85,6 +87,26 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def observability_middleware(request, call_next):
+        correlation_id = request.headers.get("x-correlation-id") or str(uuid4())
+        request.state.correlation_id = correlation_id
+        started = time.perf_counter()
+        response = await call_next(request)
+        duration_ms = round((time.perf_counter() - started) * 1000, 2)
+        response.headers["X-Correlation-ID"] = correlation_id
+        response.headers["Server-Timing"] = f"app;dur={duration_ms}"
+        logger.info(
+            "request completed method=%s path=%s status=%s duration_ms=%s correlation_id=%s",
+            request.method,
+            request.url.path,
+            response.status_code,
+            duration_ms,
+            correlation_id,
+        )
+        return response
+
     register_exception_handlers(app)
     app.include_router(health_router)
     app.include_router(api_router, prefix="/api/v1")
