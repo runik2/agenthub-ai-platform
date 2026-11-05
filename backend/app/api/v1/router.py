@@ -12,6 +12,7 @@ from app.api.v1.providers import router as providers_router
 from app.api.v1.schedules import router as schedules_router
 from app.api.v1.settings import router as settings_router
 from app.api.v1.tasks import router as tasks_router
+from app.api.v1.tools import router as tools_router
 from app.api.v1.workflows import router as workflows_router
 
 api_router = APIRouter()
@@ -24,5 +25,6 @@ api_router.include_router(logs_router)
 api_router.include_router(memories_router)
 api_router.include_router(settings_router)
 api_router.include_router(tasks_router)
+api_router.include_router(tools_router)
 api_router.include_router(workflows_router)
 api_router.include_router(schedules_router)

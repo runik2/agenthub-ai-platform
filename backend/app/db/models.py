@@ -169,6 +169,20 @@ class AgentMemory(TimestampMixin, Base):
     is_pinned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
 
+class IntegrationTool(TimestampMixin, Base):
+    __tablename__ = "integration_tools"
+
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    kind: Mapped[str] = mapped_column(String(30), default="http", nullable=False)
+    method: Mapped[str] = mapped_column(String(10), default="POST", nullable=False)
+    base_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    allowed_path: Mapped[str] = mapped_column(String(300), default="/", nullable=False)
+    requires_approval: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
 class Task(TimestampMixin, Base):
     __tablename__ = "tasks"
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)

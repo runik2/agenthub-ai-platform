@@ -14,6 +14,7 @@ import {
   ScrollText,
   Settings,
   Workflow,
+  Wrench,
   X,
   Command,
 } from "lucide-react";
@@ -34,6 +35,7 @@ const mainNav = [
 
 const soonNav: { to: string; key?: string; label?: string; icon: typeof Brain }[] = [
   { to: "/memories", label: "Память", icon: Brain },
+  { to: "/tools", key: "nav.tools", icon: Wrench },
   { to: "/tasks", key: "nav.tasks", icon: ListChecks },
   { to: "/workflows", key: "nav.workflows", icon: Workflow },
   { to: "/schedules", key: "nav.schedules", icon: CalendarClock },
@@ -71,6 +73,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                     ? t("nav.analytics")
                     : location.pathname.startsWith("/memories")
                       ? "Память"
+                      : location.pathname.startsWith("/tools")
+                        ? t("nav.tools")
             : t("nav.settings");
 
   const sidebar = (

@@ -19,6 +19,7 @@ import { WorkflowsPage } from "./pages/WorkflowsPage";
 import { SchedulesPage } from "./pages/SchedulesPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { MemoriesPage } from "./pages/MemoriesPage";
+import { ToolsPage } from "./pages/ToolsPage";
 
 function Splash() {
   return (
@@ -136,6 +137,7 @@ export default function App() {
         <Route path="/schedules" element={<RequireAuth><SchedulesPage /></RequireAuth>} />
         <Route path="/analytics" element={<RequireAuth><AnalyticsPage /></RequireAuth>} />
         <Route path="/memories" element={<RequireAuth><MemoriesPage /></RequireAuth>} />
+        <Route path="/tools" element={<RequireAuth><ToolsPage /></RequireAuth>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </SetupGuard>
