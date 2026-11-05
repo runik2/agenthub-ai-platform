@@ -72,12 +72,14 @@ async def list_runs(user: User = Depends(get_current_user), session: AsyncSessio
 async def run_case(
     case_id: str,
     prompt_version_id: str | None = Query(default=None),
+    provider_id: str | None = Query(default=None),
+    model_name: str | None = Query(default=None, max_length=255),
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
     case = await owned_case(case_id, user, session)
     agent = await session.get(Agent, case.agent_id)
-    provider = await session.get(LLMProvider, agent.provider_id) if agent and agent.provider_id else None
+    provider = await session.get(LLMProvider, provider_id or agent.provider_id) if agent else None
     if not agent or not provider or provider.owner_id != workspace_owner_id(user) or not provider.is_active:
         raise AppError("EVALUATION_NO_PROVIDER", "Agent needs an active model provider", 409)
     prompt_version = None
@@ -95,6 +97,7 @@ async def run_case(
         owner_id=workspace_owner_id(user),
         case_id=case.id,
         agent_id=agent.id,
+        provider_id=provider.id,
         prompt_version_id=prompt_version.id if prompt_version else None,
         status="running",
     )
@@ -103,7 +106,7 @@ async def run_case(
     try:
         result = await llm.chat(
             provider,
-            agent.model_name or provider.default_model,
+            model_name or agent.model_name or provider.default_model,
             [
                 {
                     "role": "system",
@@ -118,6 +121,7 @@ async def run_case(
         )
         run.status = "completed"
         run.output = result.content
+        run.model_name = result.model
         run.latency_ms = result.latency_ms
         run.cost = compute_cost(
             result.tokens_in, result.tokens_out, provider.input_price_per_1m, provider.output_price_per_1m
@@ -135,6 +139,8 @@ async def run_case(
 async def run_batch(
     case_ids: list[str] = Query(..., min_length=1, max_length=50),
     prompt_version_id: str | None = Query(default=None),
+    provider_id: str | None = Query(default=None),
+    model_name: str | None = Query(default=None, max_length=255),
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
@@ -142,7 +148,7 @@ async def run_batch(
     if len(unique_ids) > 50:
         raise AppError("EVALUATION_BATCH_TOO_LARGE", "Batch is limited to 50 cases", 422)
     return [
-        await run_case(case_id, prompt_version_id, user, session)
+        await run_case(case_id, prompt_version_id, provider_id, model_name, user, session)
         for case_id in unique_ids
     ]
 

@@ -24,6 +24,7 @@ class EvaluationRunOut(BaseModel):
     id: str
     case_id: str
     agent_id: str
+    provider_id: str | None = None
     prompt_version_id: str | None = None
     status: str
     passed: bool
@@ -31,4 +32,5 @@ class EvaluationRunOut(BaseModel):
     latency_ms: int
     cost: Decimal
     error: str | None
+    model_name: str
     created_at: datetime

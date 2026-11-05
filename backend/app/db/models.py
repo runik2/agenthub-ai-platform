@@ -307,6 +307,9 @@ class EvaluationRun(TimestampMixin, Base):
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     case_id: Mapped[str] = mapped_column(ForeignKey("evaluation_cases.id", ondelete="CASCADE"), index=True)
     agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"), index=True)
+    provider_id: Mapped[str | None] = mapped_column(
+        ForeignKey("llm_providers.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     prompt_version_id: Mapped[str | None] = mapped_column(
         ForeignKey("prompt_versions.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -316,6 +319,7 @@ class EvaluationRun(TimestampMixin, Base):
     latency_ms: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     cost: Mapped[Decimal] = mapped_column(Numeric(12, 6), default=Decimal("0"), nullable=False)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    model_name: Mapped[str] = mapped_column(String(255), default="", nullable=False)
 
 
 class Task(TimestampMixin, Base):
