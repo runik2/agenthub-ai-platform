@@ -5,6 +5,7 @@ export interface User {
   role: string;
   is_active: boolean;
   created_at: string;
+  two_factor_enabled?: boolean;
 }
 
 export interface TokenResponse {
