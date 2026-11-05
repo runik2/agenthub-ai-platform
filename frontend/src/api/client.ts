@@ -62,11 +62,12 @@ export function setUnauthorizedHandler(handler: (() => void) | null): void {
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
+  const multipart = typeof FormData !== "undefined" && options.body instanceof FormData;
   const token = getToken();
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
-  if (options.body !== undefined) {
+  if (options.body !== undefined && !multipart) {
     headers["Content-Type"] = "application/json";
   }
 
@@ -75,7 +76,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     response = await fetch(`${API_BASE}${path}${buildQuery(options.query)}`, {
       method: options.method ?? "GET",
       headers,
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      body: options.body === undefined ? undefined : multipart ? (options.body as FormData) : JSON.stringify(options.body),
     });
   } catch {
     throw new ApiError("NETWORK_ERROR", 0, "Network request failed");
