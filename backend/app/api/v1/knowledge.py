@@ -3,14 +3,14 @@ from pathlib import Path
 
 import httpx
 from fastapi import APIRouter, Depends, File, Query, UploadFile
-from sqlalchemy import or_, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, workspace_owner_id
 from app.core.errors import AppError
-from app.db.models import Agent, KnowledgeChunk, KnowledgeDocument, User
+from app.db.models import Agent, KnowledgeChunk, KnowledgeDocument, KnowledgeDocumentVersion, User
 from app.db.session import get_session
-from app.schemas.knowledge import DocumentCreate, DocumentOut, SearchResult
+from app.schemas.knowledge import DocumentCreate, DocumentOut, DocumentVersionOut, SearchResult
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
 CHUNK_SIZE = 900
@@ -46,6 +46,9 @@ async def index_document(
     )
     session.add(document)
     await session.flush()
+    session.add(
+        KnowledgeDocumentVersion(document_id=document.id, version=1, content=content, chunk_count=len(chunks))
+    )
     for index, chunk in enumerate(chunks):
         session.add(
             KnowledgeChunk(
@@ -166,6 +169,69 @@ async def delete_document(
         raise AppError("DOCUMENT_NOT_FOUND", "Knowledge document not found", 404)
     await session.delete(document)
     await session.commit()
+
+
+@router.get("/documents/{document_id}/versions", response_model=list[DocumentVersionOut])
+async def list_document_versions(
+    document_id: str,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    document = await session.scalar(
+        select(KnowledgeDocument).where(
+            KnowledgeDocument.id == document_id,
+            KnowledgeDocument.owner_id == workspace_owner_id(user),
+        )
+    )
+    if not document:
+        raise AppError("DOCUMENT_NOT_FOUND", "Knowledge document not found", 404)
+    rows = await session.scalars(
+        select(KnowledgeDocumentVersion)
+        .where(KnowledgeDocumentVersion.document_id == document_id)
+        .order_by(KnowledgeDocumentVersion.version.desc())
+    )
+    return list(rows.all())
+
+
+@router.post("/documents/{document_id}/reindex", response_model=DocumentOut)
+async def reindex_document(
+    document_id: str,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    document = await session.scalar(
+        select(KnowledgeDocument).where(
+            KnowledgeDocument.id == document_id,
+            KnowledgeDocument.owner_id == workspace_owner_id(user),
+        )
+    )
+    if not document:
+        raise AppError("DOCUMENT_NOT_FOUND", "Knowledge document not found", 404)
+    chunks = split_chunks(document.content)
+    document.version += 1
+    document.chunk_count = len(chunks)
+    await session.execute(delete(KnowledgeChunk).where(KnowledgeChunk.document_id == document.id))
+    session.add(
+        KnowledgeDocumentVersion(
+            document_id=document.id,
+            version=document.version,
+            content=document.content,
+            chunk_count=len(chunks),
+        )
+    )
+    for index, chunk in enumerate(chunks):
+        session.add(
+            KnowledgeChunk(
+                document_id=document.id,
+                owner_id=document.owner_id,
+                agent_id=document.agent_id,
+                chunk_index=index,
+                content=chunk,
+            )
+        )
+    await session.commit()
+    await session.refresh(document)
+    return document
 
 
 @router.get("/search", response_model=list[SearchResult])

@@ -227,6 +227,18 @@ class KnowledgeDocument(TimestampMixin, Base):
     source_type: Mapped[str] = mapped_column(String(30), default="text", nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     chunk_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+
+
+class KnowledgeDocumentVersion(TimestampMixin, Base):
+    __tablename__ = "knowledge_document_versions"
+
+    document_id: Mapped[str] = mapped_column(
+        ForeignKey("knowledge_documents.id", ondelete="CASCADE"), index=True
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    chunk_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
 
 class KnowledgeChunk(TimestampMixin, Base):

@@ -32,3 +32,20 @@ async def test_text_upload_is_indexed(client: httpx.AsyncClient, auth_headers: d
     assert uploaded.json()["title"] == "policy.txt"
     assert uploaded.json()["chunk_count"] == 1
 
+
+async def test_document_reindex_creates_version_snapshot(
+    client: httpx.AsyncClient, auth_headers: dict[str, str]
+) -> None:
+    created = await client.post(
+        "/api/v1/knowledge/documents",
+        json={"title": "Versioned guide", "content": "First revision."},
+        headers=auth_headers,
+    )
+    document_id = created.json()["id"]
+    assert created.json()["version"] == 1
+    reindexed = await client.post(f"/api/v1/knowledge/documents/{document_id}/reindex", headers=auth_headers)
+    assert reindexed.status_code == 200
+    assert reindexed.json()["version"] == 2
+    versions = await client.get(f"/api/v1/knowledge/documents/{document_id}/versions", headers=auth_headers)
+    assert versions.status_code == 200
+    assert [item["version"] for item in versions.json()] == [2, 1]

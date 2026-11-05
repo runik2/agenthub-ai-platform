@@ -16,6 +16,7 @@ class DocumentOut(BaseModel):
     source_type: str
     agent_id: str | None
     chunk_count: int
+    version: int
     created_at: datetime
     updated_at: datetime
 
@@ -26,3 +27,12 @@ class SearchResult(BaseModel):
     chunk_index: int
     content: str
     score: int
+
+
+class DocumentVersionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    document_id: str
+    version: int
+    chunk_count: int
+    created_at: datetime
