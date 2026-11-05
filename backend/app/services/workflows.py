@@ -9,8 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError
 from app.core.metrics import metrics
-from app.db.models import Agent, IntegrationTool, LLMProvider
+from app.db.models import Agent, IntegrationTool, LLMProvider, LLMUsage
 from app.services import llm
+from app.services.pricing import compute_cost
 
 
 async def _call_integration(method: str, url: str, content: str, step: dict) -> str:
@@ -84,6 +85,7 @@ async def _execute_steps(
                                 branch.get("steps", []),
                                 branch_input,
                             )
+                            await branch_session.commit()
                     return str(branch.get("name") or f"branch_{len(branch.get('steps', []))}"), branch_result
 
                 branch_results = await asyncio.gather(*(run_branch(branch) for branch in branches))
@@ -133,6 +135,25 @@ async def _execute_steps(
                 agent.temperature,
                 agent.max_tokens,
             )
+            if session is not None:
+                session.add(
+                    LLMUsage(
+                        agent_id=agent.id,
+                        provider_id=provider.id,
+                        model_name=answer.model,
+                        tokens_in=answer.tokens_in,
+                        tokens_out=answer.tokens_out,
+                        total_tokens=answer.tokens_in + answer.tokens_out,
+                        latency_ms=answer.latency_ms,
+                        cost=compute_cost(
+                            answer.tokens_in,
+                            answer.tokens_out,
+                            provider.input_price_per_1m,
+                            provider.output_price_per_1m,
+                        ),
+                        status="ok",
+                    )
+                )
             value = answer.content
         except Exception as exc:  # noqa: BLE001
             step_error = str(exc)
