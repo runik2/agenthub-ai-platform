@@ -8,7 +8,7 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: agenthub
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agenthub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: agenthub
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -34,9 +34,9 @@ services:
       context: ./backend
     environment:
       APP_MODE: docker
-      DATABASE_URL: postgresql+asyncpg://agenthub:${POSTGRES_PASSWORD:-agenthub}@db:5432/agenthub
+      DATABASE_URL: postgresql+asyncpg://agenthub:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/agenthub
       REDIS_URL: redis://redis:6379/0
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
       SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
@@ -54,9 +54,9 @@ services:
     command: ["arq", "app.worker.WorkerSettings"]
     environment:
       APP_MODE: docker
-      DATABASE_URL: postgresql+asyncpg://agenthub:${POSTGRES_PASSWORD:-agenthub}@db:5432/agenthub
+      DATABASE_URL: postgresql+asyncpg://agenthub:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/agenthub
       REDIS_URL: redis://redis:6379/0
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
     depends_on:
       db:
@@ -70,9 +70,9 @@ services:
     command: ["python", "-m", "app.scheduler"]
     environment:
       APP_MODE: docker
-      DATABASE_URL: postgresql+asyncpg://agenthub:${POSTGRES_PASSWORD:-agenthub}@db:5432/agenthub
+      DATABASE_URL: postgresql+asyncpg://agenthub:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/agenthub
       REDIS_URL: redis://redis:6379/0
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
     depends_on:
       db:
         condition: service_healthy
@@ -88,6 +88,11 @@ services:
       - "8080:80"
     depends_on:
       - api
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
 volumes:
   pgdata:

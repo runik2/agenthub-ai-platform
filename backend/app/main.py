@@ -37,6 +37,10 @@ def configure_logging() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
+    if settings.is_docker_mode and (
+        settings.jwt_secret.startswith("dev-only") or settings.jwt_secret in {"change-me-in-production", ""}
+    ):
+        raise RuntimeError("APP_MODE=docker requires a strong JWT_SECRET")
     configure_logging()
     await init_db()
     session_factory = get_session_factory()
