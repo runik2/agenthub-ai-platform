@@ -42,7 +42,7 @@
 - Экономика workspace: токены и стоимость по моделям, агентам и workflow, месячные бюджеты,
   warning/exceeded статусы и fallback-провайдер.
 - Production-наблюдаемость: readiness DB/queue, Prometheus metrics, JSON-логи с correlation id,
-  Grafana dashboard, task traces, integration journal и PostgreSQL backup script.
+  Grafana dashboard, live task/approval polling, task traces, integration journal и PostgreSQL backup script.
 - Переключатель RU/EN (localStorage, по умолчанию RU), светлая/тёмная тема, адаптив до 390px.
 - Command Palette по Ctrl/⌘+K с поиском разделов и keyboard navigation.
 - Demo-данные создаются только при явной пометке: у демо-агентов тег `demo`, описание начинается
