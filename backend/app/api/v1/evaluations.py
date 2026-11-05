@@ -129,3 +129,67 @@ async def run_case(
     await session.commit()
     await session.refresh(run)
     return run
+
+
+@router.post("/batch", response_model=list[EvaluationRunOut], status_code=201)
+async def run_batch(
+    case_ids: list[str] = Query(..., min_length=1, max_length=50),
+    prompt_version_id: str | None = Query(default=None),
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    unique_ids = list(dict.fromkeys(case_ids))
+    if len(unique_ids) > 50:
+        raise AppError("EVALUATION_BATCH_TOO_LARGE", "Batch is limited to 50 cases", 422)
+    return [
+        await run_case(case_id, prompt_version_id, user, session)
+        for case_id in unique_ids
+    ]
+
+
+@router.get("/summary")
+async def evaluation_summary(
+    user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)
+) -> dict:
+    runs = list(
+        (
+            await session.scalars(
+                select(EvaluationRun)
+                .where(EvaluationRun.owner_id == workspace_owner_id(user))
+                .order_by(EvaluationRun.created_at.desc())
+                .limit(500)
+            )
+        ).all()
+    )
+    completed = [run for run in runs if run.status == "completed"]
+    total_cost = sum(float(run.cost or 0) for run in completed)
+    return {
+        "runs": len(runs),
+        "completed": len(completed),
+        "passed": sum(int(run.passed) for run in completed),
+        "pass_rate": round(sum(int(run.passed) for run in completed) / len(completed), 4)
+        if completed
+        else 0,
+        "avg_latency_ms": round(sum(run.latency_ms for run in completed) / len(completed), 1)
+        if completed
+        else 0,
+        "total_cost": round(total_cost, 6),
+        "by_prompt_version": [
+            {
+                "prompt_version_id": version_id or "current",
+                "runs": len(group),
+                "passed": sum(int(run.passed) for run in group),
+                "pass_rate": round(sum(int(run.passed) for run in group) / len(group), 4),
+                "avg_latency_ms": round(sum(run.latency_ms for run in group) / len(group), 1),
+                "cost": round(sum(float(run.cost or 0) for run in group), 6),
+            }
+            for version_id, group in _group_runs(completed)
+        ],
+    }
+
+
+def _group_runs(runs: list[EvaluationRun]) -> list[tuple[str | None, list[EvaluationRun]]]:
+    groups: dict[str | None, list[EvaluationRun]] = {}
+    for run in runs:
+        groups.setdefault(run.prompt_version_id, []).append(run)
+    return list(groups.items())
