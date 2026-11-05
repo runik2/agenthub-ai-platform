@@ -63,6 +63,7 @@ async def _prepare_database() -> None:
 
 @pytest.fixture
 async def client() -> httpx.AsyncClient:
+    app.state.rate_limiter.reset_local()
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
