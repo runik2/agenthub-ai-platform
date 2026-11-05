@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { ArrowDown, CheckCircle2, GitBranch, Play, Plus, Save, Sparkles, Trash2, Workflow } from "lucide-react";
+import { useEffect, useMemo, useState, type DragEvent } from "react";
+import { ArrowDown, CheckCircle2, GitBranch, GripVertical, Play, Plus, Save, Sparkles, Trash2, Workflow } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { request } from "../api/client";
@@ -16,13 +16,17 @@ const makeStep = (type: StepType): Step => ({ id: crypto.randomUUID(), type, pro
 
 function EditorStep({ step, index, agents, tools, update, remove }: { step: Step; index: number; agents: any[]; tools: Tool[]; update: (step: Step) => void; remove: () => void }) {
   const tone = step.type === "approval" ? "danger" : step.type === "condition" ? "warning" : step.type === "tool" ? "violet" : "accent";
-  return <Card className="space-y-3 p-4"><div className="flex items-center gap-3"><span className="grid h-8 w-8 place-items-center rounded-xl bg-accent/10 text-xs font-bold text-accent">{index + 1}</span><div className="min-w-0 flex-1"><p className="font-semibold text-ink">{labels[step.type]}</p><p className="text-[11px] text-muted">{step.type === "approval" ? "Остановка до решения оператора" : "Вход предыдущего шага → результат"}</p></div><Badge tone={tone}>{step.type}</Badge><IconButton label="Удалить шаг" tone="danger" onClick={remove}><Trash2 size={14} /></IconButton></div>
+  const drop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    window.dispatchEvent(new CustomEvent("agenthub-step-drop", { detail: { fromId: event.dataTransfer.getData("text/plain"), toId: step.id } }));
+  };
+  return <div draggable data-step-id={step.id} onDragStart={event => event.dataTransfer.setData("text/plain", step.id)} onDragOver={event => event.preventDefault()} onDrop={drop} className="cursor-grab transition-opacity hover:opacity-90"><Card className="space-y-3 p-4"><div className="flex items-center gap-3"><GripVertical className="shrink-0 text-muted" size={16} aria-label="Перетащить шаг" /><span className="grid h-8 w-8 place-items-center rounded-xl bg-accent/10 text-xs font-bold text-accent">{index + 1}</span><div className="min-w-0 flex-1"><p className="font-semibold text-ink">{labels[step.type]}</p><p className="text-[11px] text-muted">{step.type === "approval" ? "Остановка до решения оператора" : "Вход предыдущего шага → результат"}</p></div><Badge tone={tone}>{step.type}</Badge><IconButton label="Удалить шаг" tone="danger" onClick={remove}><Trash2 size={14} /></IconButton></div>
     {step.type === "agent" ? <div className="grid gap-3 sm:grid-cols-2"><Field label="Агент"><Select value={step.agent_id ?? ""} onChange={e => update({ ...step, agent_id: e.target.value || undefined })}><option value="">Выберите агента</option>{agents.map(agent => <option value={agent.id} key={agent.id}>{agent.name}</option>)}</Select></Field><Field label="Инструкция"><Input value={step.prompt ?? ""} onChange={e => update({ ...step, prompt: e.target.value })} /></Field></div> : null}
     {step.type === "tool" ? <div className="grid gap-3 sm:grid-cols-2"><Field label="Разрешённый инструмент"><Select value={step.tool_id ?? ""} onChange={e => update({ ...step, tool_id: e.target.value || undefined, tool: e.target.value ? "integration" : "text_template" })}><option value="">Встроенный текстовый инструмент</option>{tools.map(tool => <option value={tool.id} key={tool.id}>{tool.name} · {tool.method}{tool.requires_approval ? " · approval" : ""}</option>)}</Select></Field><Field label="Шаблон"><Input value={step.template ?? "{input}"} onChange={e => update({ ...step, template: e.target.value })} /></Field></div> : null}
     {step.type === "condition" ? <div className="grid gap-3 sm:grid-cols-3"><Field label="Если содержит"><Input value={typeof step.condition === "string" ? step.condition : step.condition?.value ?? ""} placeholder="например: approved" onChange={e => update({ ...step, condition: { type: "if_contains", value: e.target.value } })} /></Field><Field label="Ветка да"><Input value={step.on_true ?? "true"} onChange={e => update({ ...step, on_true: e.target.value })} /></Field><Field label="Ветка нет"><Input value={step.on_false ?? "false"} onChange={e => update({ ...step, on_false: e.target.value })} /></Field></div> : null}
     {step.type !== "condition" && step.type !== "approval" ? <Field label="Ветка (необязательно)"><Input value={step.branch ?? ""} placeholder="например: approved" onChange={e => update({ ...step, branch: e.target.value || undefined })} /></Field> : null}
     {step.type === "approval" ? <div className="rounded-xl border border-warning/30 bg-warning/10 px-3 py-3 text-sm text-ink"><CheckCircle2 className="mr-2 inline text-warning" size={16} /><b>Human-in-the-loop.</b> Задача попадёт в очередь подтверждений до запуска workflow.</div> : null}
-  </Card>;
+  </Card></div>;
 }
 
 export function WorkflowsPage() {
@@ -35,6 +39,15 @@ export function WorkflowsPage() {
   const reset = () => { setCurrent(null); setName(""); setDescription(""); setSteps([makeStep("agent")]); };
   const select = (workflow: WorkflowData) => { setCurrent(workflow); setName(workflow.name); setDescription(workflow.description); setSteps(workflow.steps.map(step => ({ ...step, id: step.id || crypto.randomUUID() }))); };
   const payload = useMemo(() => ({ name: name || "Новый workflow", description, enabled: true, steps: steps.map(({ id, ...step }) => step) }), [name, description, steps]);
+  const moveStep = (fromId: string, toId: string) => setSteps(items => { const from = items.findIndex(item => item.id === fromId); const to = items.findIndex(item => item.id === toId); if (from < 0 || to < 0 || from === to) return items; const next = [...items]; const [moved] = next.splice(from, 1); next.splice(to, 0, moved); return next; });
+  useEffect(() => {
+    const handleDrop = (event: Event) => {
+      const detail = (event as CustomEvent<{ fromId?: string; toId?: string }>).detail;
+      if (detail?.fromId && detail.toId) moveStep(detail.fromId, detail.toId);
+    };
+    window.addEventListener("agenthub-step-drop", handleDrop);
+    return () => window.removeEventListener("agenthub-step-drop", handleDrop);
+  }, [steps]);
   const save = useMutation({ mutationFn: () => current ? request<WorkflowData>(`/workflows/${current.id}`, { method: "PUT", body: payload }) : request<WorkflowData>("/workflows", { method: "POST", body: payload }), onSuccess: data => { setCurrent(data); qc.invalidateQueries({ queryKey: ["workflows"] }); } });
   const run = useMutation({ mutationFn: (id: string) => request(`/workflows/${id}/run`, { method: "POST" }) });
 
