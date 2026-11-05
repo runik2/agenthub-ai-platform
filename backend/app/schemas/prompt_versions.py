@@ -10,7 +10,15 @@ class PromptVersionOut(BaseModel):
     version: int
     system_prompt: str
     note: str
+    author_id: str | None = None
+    author_name: str | None = None
     created_at: datetime
+
+
+class PromptDiffOut(BaseModel):
+    from_version: int
+    to_version: int
+    unified_diff: str
 
 
 class PromptRollback(BaseModel):

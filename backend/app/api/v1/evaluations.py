@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, workspace_owner_id
 from app.core.errors import AppError
-from app.db.models import Agent, EvaluationCase, EvaluationRun, LLMProvider, User
+from app.db.models import Agent, EvaluationCase, EvaluationRun, LLMProvider, PromptVersion, User
 from app.db.session import get_session
 from app.schemas.evaluations import EvaluationCaseCreate, EvaluationCaseOut, EvaluationRunOut
 from app.services import llm
@@ -70,15 +70,33 @@ async def list_runs(user: User = Depends(get_current_user), session: AsyncSessio
 
 @router.post("/cases/{case_id}/run", response_model=EvaluationRunOut, status_code=201)
 async def run_case(
-    case_id: str, user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)
+    case_id: str,
+    prompt_version_id: str | None = Query(default=None),
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
 ):
     case = await owned_case(case_id, user, session)
     agent = await session.get(Agent, case.agent_id)
     provider = await session.get(LLMProvider, agent.provider_id) if agent and agent.provider_id else None
     if not agent or not provider or provider.owner_id != workspace_owner_id(user) or not provider.is_active:
         raise AppError("EVALUATION_NO_PROVIDER", "Agent needs an active model provider", 409)
+    prompt_version = None
+    if prompt_version_id:
+        prompt_version = await session.scalar(
+            select(PromptVersion).where(
+                PromptVersion.id == prompt_version_id,
+                PromptVersion.agent_id == agent.id,
+                PromptVersion.owner_id == workspace_owner_id(user),
+            )
+        )
+        if not prompt_version:
+            raise AppError("PROMPT_VERSION_NOT_FOUND", "Prompt version not found", 404)
     run = EvaluationRun(
-        owner_id=workspace_owner_id(user), case_id=case.id, agent_id=agent.id, status="running"
+        owner_id=workspace_owner_id(user),
+        case_id=case.id,
+        agent_id=agent.id,
+        prompt_version_id=prompt_version.id if prompt_version else None,
+        status="running",
     )
     session.add(run)
     await session.flush()
@@ -86,7 +104,15 @@ async def run_case(
         result = await llm.chat(
             provider,
             agent.model_name or provider.default_model,
-            [{"role": "system", "content": agent.system_prompt}, {"role": "user", "content": case.prompt}],
+            [
+                {
+                    "role": "system",
+                    "content": prompt_version.system_prompt
+                    if prompt_version
+                    else agent.system_prompt,
+                },
+                {"role": "user", "content": case.prompt},
+            ],
             agent.temperature,
             agent.max_tokens,
         )

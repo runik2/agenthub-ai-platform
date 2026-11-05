@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import difflib
+
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -12,7 +14,7 @@ from app.db.models import Agent, Conversation, LLMProvider, PromptVersion, User
 from app.db.session import get_session
 from app.schemas.agents import AgentCreate, AgentOut, AgentTemplate, AgentUpdate
 from app.schemas.common import Page, StatusResponse
-from app.schemas.prompt_versions import PromptRollback, PromptVersionOut
+from app.schemas.prompt_versions import PromptDiffOut, PromptRollback, PromptVersionOut
 from app.services.agent_templates import TEMPLATES, get_template
 
 router = APIRouter(prefix="/agents", tags=["agents"])
@@ -55,7 +57,9 @@ async def get_owned_agent(session: AsyncSession, user: User, agent_id: str) -> A
     return agent
 
 
-async def snapshot_prompt(session: AsyncSession, agent: Agent, note: str) -> PromptVersion:
+async def snapshot_prompt(
+    session: AsyncSession, agent: Agent, note: str, author_id: str | None = None
+) -> PromptVersion:
     latest = await session.scalar(
         select(func.max(PromptVersion.version)).where(PromptVersion.agent_id == agent.id)
     )
@@ -65,6 +69,7 @@ async def snapshot_prompt(session: AsyncSession, agent: Agent, note: str) -> Pro
         version=(latest or 0) + 1,
         system_prompt=agent.system_prompt,
         note=note,
+        author_id=author_id,
     )
     session.add(snapshot)
     return snapshot
@@ -131,7 +136,7 @@ async def create_agent(
     )
     session.add(agent)
     await session.flush()
-    await snapshot_prompt(session, agent, "Initial prompt")
+    await snapshot_prompt(session, agent, "Initial prompt", user.id)
     await write_audit(session, request, user.id, "agent.created", "agent", agent.id, {"name": agent.name})
     await session.commit()
     await session.refresh(agent)
@@ -165,7 +170,7 @@ async def create_from_template(
     )
     session.add(agent)
     await session.flush()
-    await snapshot_prompt(session, agent, "Created from template")
+    await snapshot_prompt(session, agent, "Created from template", user.id)
     await write_audit(
         session,
         request,
@@ -223,7 +228,7 @@ async def update_agent(
     for field, value in data.items():
         setattr(agent, field, value)
     if "system_prompt" in data:
-        await snapshot_prompt(session, agent, "Prompt updated")
+        await snapshot_prompt(session, agent, "Prompt updated", user.id)
     await write_audit(session, request, user.id, "agent.updated", "agent", agent.id)
     try:
         await session.commit()
@@ -241,12 +246,53 @@ async def list_prompt_versions(
     session: AsyncSession = Depends(get_session),
 ) -> list[PromptVersionOut]:
     await get_owned_agent(session, user, agent_id)
-    rows = await session.scalars(
-        select(PromptVersion)
+    rows = (
+        await session.execute(
+            select(PromptVersion, User)
+            .outerjoin(User, User.id == PromptVersion.author_id)
         .where(PromptVersion.agent_id == agent_id, PromptVersion.owner_id == workspace_owner_id(user))
         .order_by(PromptVersion.version.desc())
+        )
+    ).all()
+    result = []
+    for version, author in rows:
+        item = PromptVersionOut.model_validate(version).model_dump()
+        item["author_name"] = (author.full_name or author.email) if author else None
+        result.append(PromptVersionOut(**item))
+    return result
+
+
+@router.get("/{agent_id}/prompt-versions/diff", response_model=PromptDiffOut)
+async def diff_prompt_versions(
+    agent_id: str,
+    from_version: int = Query(ge=1),
+    to_version: int = Query(ge=1),
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> PromptDiffOut:
+    await get_owned_agent(session, user, agent_id)
+    rows = list(
+        (
+            await session.scalars(
+                select(PromptVersion).where(
+                    PromptVersion.agent_id == agent_id,
+                    PromptVersion.owner_id == workspace_owner_id(user),
+                    PromptVersion.version.in_([from_version, to_version]),
+                )
+            )
+        ).all()
     )
-    return [PromptVersionOut.model_validate(row) for row in rows]
+    versions = {row.version: row for row in rows}
+    if from_version not in versions or to_version not in versions:
+        raise AppError("PROMPT_VERSION_NOT_FOUND", "Prompt version not found", 404)
+    diff = difflib.unified_diff(
+        versions[from_version].system_prompt.splitlines(),
+        versions[to_version].system_prompt.splitlines(),
+        fromfile=f"v{from_version}",
+        tofile=f"v{to_version}",
+        lineterm="",
+    )
+    return PromptDiffOut(from_version=from_version, to_version=to_version, unified_diff="\n".join(diff))
 
 
 @router.post("/{agent_id}/prompt-versions/{version_id}/restore", response_model=AgentOut)
@@ -269,7 +315,9 @@ async def restore_prompt_version(
     if not version:
         raise AppError("PROMPT_VERSION_NOT_FOUND", "Prompt version not found", 404)
     agent.system_prompt = version.system_prompt
-    await snapshot_prompt(session, agent, payload.note or f"Restored version {version.version}")
+    await snapshot_prompt(
+        session, agent, payload.note or f"Restored version {version.version}", user.id
+    )
     await write_audit(session, request, user.id, "agent.prompt_restored", "agent", agent.id)
     await session.commit()
     await session.refresh(agent)

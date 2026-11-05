@@ -24,6 +24,7 @@ class EvaluationRunOut(BaseModel):
     id: str
     case_id: str
     agent_id: str
+    prompt_version_id: str | None = None
     status: str
     passed: bool
     output: str

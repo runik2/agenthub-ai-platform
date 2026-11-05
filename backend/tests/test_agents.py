@@ -74,6 +74,14 @@ async def test_prompt_history_and_restore(client: httpx.AsyncClient, auth_header
     history = await client.get(f"/api/v1/agents/{agent['id']}/prompt-versions", headers=auth_headers)
     assert history.status_code == 200
     assert [item["version"] for item in history.json()] == [2, 1]
+    assert history.json()[0]["author_name"]
+    diff = await client.get(
+        f"/api/v1/agents/{agent['id']}/prompt-versions/diff",
+        params={"from_version": 1, "to_version": 2},
+        headers=auth_headers,
+    )
+    assert diff.status_code == 200
+    assert "You are the new version." in diff.json()["unified_diff"]
     first = next(item for item in history.json() if item["version"] == 1)
     restored = await client.post(
         f"/api/v1/agents/{agent['id']}/prompt-versions/{first['id']}/restore",

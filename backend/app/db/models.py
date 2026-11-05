@@ -245,6 +245,9 @@ class PromptVersion(TimestampMixin, Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     system_prompt: Mapped[str] = mapped_column(Text, nullable=False)
     note: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    author_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
 
 class KnowledgeDocument(TimestampMixin, Base):
@@ -304,6 +307,9 @@ class EvaluationRun(TimestampMixin, Base):
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     case_id: Mapped[str] = mapped_column(ForeignKey("evaluation_cases.id", ondelete="CASCADE"), index=True)
     agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"), index=True)
+    prompt_version_id: Mapped[str | None] = mapped_column(
+        ForeignKey("prompt_versions.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     passed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     output: Mapped[str] = mapped_column(Text, default="", nullable=False)
