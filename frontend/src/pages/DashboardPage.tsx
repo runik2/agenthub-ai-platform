@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { Activity, AlertTriangle, Bot, Coins, MessagesSquare, ArrowUpRight, Plus, PlugZap, Sparkles } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Activity, AlertTriangle, Bot, Coins, MessagesSquare, ArrowUpRight, Plus, PlugZap, Server, Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { useOverview } from "../api/hooks";
@@ -111,6 +112,15 @@ export function DashboardPage() {
   const { t, formatNumber } = useI18n();
   const [days, setDays] = useState(30);
   const overview = useOverview(days);
+  const health = useQuery({
+    queryKey: ["runtime-health"],
+    queryFn: async () => {
+      const response = await fetch("/api/v1/health/ready", { headers: { Accept: "application/json" } });
+      return (await response.json()) as { status: string; db: string; queue: string; mode: string; version: string };
+    },
+    refetchInterval: 30_000,
+    retry: false,
+  });
   const data = overview.data;
 
   const statusTone = (status: string) =>
@@ -178,6 +188,35 @@ export function DashboardPage() {
           />
         </div>
       )}
+
+      <Card className="border-accent/15 bg-gradient-to-r from-card to-accent/[.04] p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="grid h-9 w-9 place-items-center rounded-xl bg-accent/10 text-accent">
+              <Server size={17} />
+            </span>
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-muted">Runtime readiness</p>
+              <p className="mt-0.5 text-sm font-semibold text-ink">Состояние платформы</p>
+            </div>
+          </div>
+          <Badge tone={health.data?.status === "ok" ? "success" : health.isError || health.data?.status === "degraded" ? "danger" : "neutral"}>
+            {health.isLoading ? "проверяем…" : health.data?.status === "ok" ? "готова к работе" : "нужна проверка"}
+          </Badge>
+        </div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-3">
+          {[
+            ["API", health.data?.status ?? "unknown"],
+            ["База данных", health.data?.db ?? "unknown"],
+            ["Очередь задач", health.data?.queue ?? "unknown"],
+          ].map(([label, status]) => (
+            <div className="flex items-center justify-between rounded-lg bg-raised/60 px-3 py-2 text-xs" key={label}>
+              <span className="text-muted">{label}</span>
+              <span className={status === "ok" ? "font-semibold text-success" : "font-semibold text-warning"}>{status}</span>
+            </div>
+          ))}
+        </div>
+      </Card>
 
       <Card className="space-y-3">
         <div className="flex items-center justify-between gap-2">
