@@ -55,6 +55,12 @@ async def test_tool_catalog_contains_safe_starters(
     response = await client.get("/api/v1/tools/catalog", headers=auth_headers)
     assert response.status_code == 200, response.text
     catalog = response.json()
-    assert {item["id"] for item in catalog} >= {"telegram-bridge", "gmail-bridge", "crm-webhook"}
+    assert {item["id"] for item in catalog} >= {
+        "telegram-bridge",
+        "gmail-bridge",
+        "crm-webhook",
+        "notion-bridge",
+        "google-calendar-bridge",
+    }
     assert all("token" not in item["base_url"].lower() for item in catalog)
     assert all(item["base_url"].startswith("https://") for item in catalog)

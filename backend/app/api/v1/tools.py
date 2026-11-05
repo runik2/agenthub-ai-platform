@@ -55,6 +55,34 @@ TOOL_TEMPLATES = [
             "Секреты передавайте через bridge или секрет-хранилище."
         ),
     },
+    {
+        "id": "notion-bridge",
+        "name": "Notion: создать страницу через bridge",
+        "description": "Создаёт страницу или добавляет запись в Notion через OAuth bridge.",
+        "kind": "http",
+        "method": "POST",
+        "base_url": "https://your-bridge.example.com",
+        "allowed_path": "/notion/create-page",
+        "requires_approval": True,
+        "setup_hint": (
+            "Подключите OAuth bridge с доступом к выбранной базе Notion; "
+            "секреты и refresh token остаются за пределами AgentHub."
+        ),
+    },
+    {
+        "id": "google-calendar-bridge",
+        "name": "Google Calendar: создать событие",
+        "description": "Создаёт событие в Google Calendar через OAuth bridge с обязательным approval.",
+        "kind": "http",
+        "method": "POST",
+        "base_url": "https://your-bridge.example.com",
+        "allowed_path": "/google-calendar/create-event",
+        "requires_approval": True,
+        "setup_hint": (
+            "Используйте отдельный OAuth bridge и ограничьте календарь; "
+            "не передавайте credentials в URL или prompt."
+        ),
+    },
 ]
 
 
