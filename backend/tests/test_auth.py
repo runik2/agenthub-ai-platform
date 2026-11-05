@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import httpx
 
+from app.core.security import totp_code
+
 
 async def test_setup_status_reports_existing_admin(client: httpx.AsyncClient) -> None:
     response = await client.get("/api/v1/auth/setup-status")
@@ -84,6 +86,42 @@ async def test_password_change_revokes_sessions(client: httpx.AsyncClient) -> No
         "/api/v1/auth/login", json={"email": "password-test@example.com", "password": "new-pass123"}
     )
     assert relogin.status_code == 200
+
+
+async def test_two_factor_setup_and_login_gate(client: httpx.AsyncClient) -> None:
+    admin = await client.post(
+        "/api/v1/auth/login", json={"email": "admin@test.local", "password": "admin12345"}
+    )
+    created = await client.post(
+        "/api/v1/team",
+        json={
+            "email": "two-factor@example.com",
+            "full_name": "Two Factor",
+            "password": "twofactor123",
+            "role": "viewer",
+        },
+        headers={"Authorization": f"Bearer {admin.json()['access_token']}"},
+    )
+    assert created.status_code == 201
+    login = await client.post(
+        "/api/v1/auth/login", json={"email": "two-factor@example.com", "password": "twofactor123"}
+    )
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    setup = await client.post("/api/v1/auth/2fa/setup", headers=headers)
+    assert setup.status_code == 200
+    secret = setup.json()["secret"]
+    code = totp_code(secret)
+    enabled = await client.post("/api/v1/auth/2fa/enable", json={"code": code}, headers=headers)
+    assert enabled.status_code == 200
+    blocked = await client.post(
+        "/api/v1/auth/login", json={"email": "two-factor@example.com", "password": "twofactor123"}
+    )
+    assert blocked.status_code == 401
+    allowed = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "two-factor@example.com", "password": "twofactor123", "otp_code": code},
+    )
+    assert allowed.status_code == 200
 
 
 async def test_login_with_wrong_password(client: httpx.AsyncClient) -> None:

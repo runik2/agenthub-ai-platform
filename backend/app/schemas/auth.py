@@ -41,6 +41,7 @@ class SetupRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: str = Field(min_length=3, max_length=255)
     password: str = Field(min_length=1, max_length=128)
+    otp_code: str | None = Field(default=None, min_length=6, max_length=6)
 
     @field_validator("email")
     @classmethod
@@ -62,3 +63,7 @@ class RefreshRequest(BaseModel):
 class PasswordChange(BaseModel):
     current_password: str = Field(min_length=1, max_length=128)
     new_password: str = Field(min_length=8, max_length=128)
+
+
+class TwoFactorCode(BaseModel):
+    code: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")

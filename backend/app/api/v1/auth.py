@@ -11,7 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, write_audit
 from app.config import get_settings
 from app.core.errors import AppError
-from app.core.security import create_access_token, hash_password, verify_password
+from app.core.security import (
+    create_access_token,
+    hash_password,
+    new_totp_secret,
+    verify_password,
+    verify_totp,
+)
 from app.db.models import RefreshSession, User
 from app.db.session import get_session
 from app.schemas.auth import (
@@ -21,6 +27,7 @@ from app.schemas.auth import (
     SetupRequest,
     SetupStatus,
     TokenResponse,
+    TwoFactorCode,
     UserOut,
 )
 from app.services.bootstrap import user_count
@@ -90,6 +97,12 @@ async def login(
         raise AppError("INVALID_CREDENTIALS", "Invalid email or password", 401)
     if not user.is_active:
         raise AppError("USER_DISABLED", "This account is disabled", 403)
+    if user.two_factor_enabled and (
+        not payload.otp_code
+        or not user.two_factor_secret
+        or not verify_totp(user.two_factor_secret, payload.otp_code)
+    ):
+        raise AppError("TWO_FACTOR_REQUIRED", "A valid two-factor code is required", 401)
     user.last_login_at = datetime.now(UTC)
     await write_audit(session, request, user.id, "auth.login", "user", user.id)
     await session.commit()
@@ -185,3 +198,43 @@ async def change_password(
 @router.get("/me", response_model=UserOut)
 async def me(user: User = Depends(get_current_user)) -> UserOut:
     return UserOut.model_validate(user)
+
+
+@router.post("/2fa/setup")
+async def setup_two_factor(
+    user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)
+) -> dict[str, str]:
+    secret = user.two_factor_secret or new_totp_secret()
+    user.two_factor_secret = secret
+    await session.commit()
+    return {
+        "secret": secret,
+        "otpauth_uri": f"otpauth://totp/AgentHub:{user.email}?secret={secret}&issuer=AgentHub",
+    }
+
+
+@router.post("/2fa/enable")
+async def enable_two_factor(
+    payload: TwoFactorCode,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, str]:
+    if not user.two_factor_secret or not verify_totp(user.two_factor_secret, payload.code):
+        raise AppError("INVALID_TWO_FACTOR", "Invalid two-factor code", 400)
+    user.two_factor_enabled = True
+    await session.commit()
+    return {"status": "enabled"}
+
+
+@router.post("/2fa/disable")
+async def disable_two_factor(
+    payload: TwoFactorCode,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, str]:
+    if not user.two_factor_secret or not verify_totp(user.two_factor_secret, payload.code):
+        raise AppError("INVALID_TWO_FACTOR", "Invalid two-factor code", 400)
+    user.two_factor_enabled = False
+    user.two_factor_secret = None
+    await session.commit()
+    return {"status": "disabled"}

@@ -32,6 +32,8 @@ class User(TimestampMixin, Base):
     role: Mapped[str] = mapped_column(String(20), default="user", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    two_factor_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    two_factor_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     agents: Mapped[list[Agent]] = relationship(back_populates="owner")
 
