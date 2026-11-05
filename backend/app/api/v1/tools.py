@@ -9,9 +9,51 @@ from app.api.deps import get_current_user, require_roles, workspace_owner_id
 from app.core.errors import AppError
 from app.db.models import IntegrationTool, User
 from app.db.session import get_session
-from app.schemas.tools import ToolCreate, ToolOut, ToolUpdate
+from app.schemas.tools import ToolCreate, ToolOut, ToolTemplateOut, ToolUpdate
 
 router = APIRouter(prefix="/tools", tags=["tools"])
+
+TOOL_TEMPLATES = [
+    {
+        "id": "telegram-bridge",
+        "name": "Telegram Bot bridge",
+        "description": "Отправляет сообщение через ваш HTTPS-сервис-посредник в Telegram Bot API.",
+        "kind": "http",
+        "method": "POST",
+        "base_url": "https://your-bridge.example.com",
+        "allowed_path": "/telegram/send-message",
+        "requires_approval": True,
+        "setup_hint": "Укажите адрес собственного bridge-сервиса. Токен бота не хранится в URL AgentHub.",
+    },
+    {
+        "id": "gmail-bridge",
+        "name": "Gmail отправка через bridge",
+        "description": "Создаёт письмо или черновик через ваш OAuth-сервис-посредник для Gmail.",
+        "kind": "http",
+        "method": "POST",
+        "base_url": "https://your-bridge.example.com",
+        "allowed_path": "/gmail/create-draft",
+        "requires_approval": True,
+        "setup_hint": (
+            "Используйте OAuth bridge с секретами вне AgentHub; "
+            "для отправки оставьте approval включённым."
+        ),
+    },
+    {
+        "id": "crm-webhook",
+        "name": "CRM: создать лид",
+        "description": "Передаёт структурированные данные лида в CRM webhook или ваш API gateway.",
+        "kind": "webhook",
+        "method": "POST",
+        "base_url": "https://crm.example.com",
+        "allowed_path": "/api/v1/leads",
+        "requires_approval": True,
+        "setup_hint": (
+            "Замените домен и путь на endpoint вашей CRM. "
+            "Секреты передавайте через bridge или секрет-хранилище."
+        ),
+    },
+]
 
 
 def validate_target(base_url: str, allowed_path: str) -> None:
@@ -46,6 +88,12 @@ async def list_tools(user: User = Depends(get_current_user), session: AsyncSessi
         .order_by(IntegrationTool.created_at.desc())
     )
     return list((await session.scalars(stmt)).all())
+
+
+@router.get("/catalog", response_model=list[ToolTemplateOut])
+async def list_tool_templates(user: User = Depends(get_current_user)):
+    """Return safe starter templates; templates never contain credentials."""
+    return TOOL_TEMPLATES
 
 
 @router.post("", response_model=ToolOut, status_code=201)

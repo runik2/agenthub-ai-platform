@@ -40,3 +40,15 @@ class ToolOut(ToolCreate):
     owner_id: str
     created_at: datetime
     updated_at: datetime
+
+
+class ToolTemplateOut(BaseModel):
+    id: str
+    name: str
+    description: str
+    kind: str
+    method: str
+    base_url: str
+    allowed_path: str
+    requires_approval: bool
+    setup_hint: str

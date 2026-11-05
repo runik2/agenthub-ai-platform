@@ -47,3 +47,14 @@ async def test_tool_refuses_private_or_unbounded_targets(
         "/api/v1/tools", json={**TOOL, "allowed_path": "https://evil.example"}, headers=auth_headers
     )
     assert unsafe_path.status_code == 422
+
+
+async def test_tool_catalog_contains_safe_starters(
+    client: httpx.AsyncClient, auth_headers: dict[str, str]
+) -> None:
+    response = await client.get("/api/v1/tools/catalog", headers=auth_headers)
+    assert response.status_code == 200, response.text
+    catalog = response.json()
+    assert {item["id"] for item in catalog} >= {"telegram-bridge", "gmail-bridge", "crm-webhook"}
+    assert all("token" not in item["base_url"].lower() for item in catalog)
+    assert all(item["base_url"].startswith("https://") for item in catalog)
