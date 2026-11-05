@@ -102,6 +102,38 @@ async def test_manager_can_work_with_admin_workspace_resources(
     assert any(item["id"] == workflow.json()["id"] for item in listed.json())
 
 
+async def test_manager_can_create_workspace_schedule(
+    client: httpx.AsyncClient, auth_headers: dict[str, str]
+) -> None:
+    workflow = await client.post(
+        "/api/v1/workflows",
+        json={"name": "Scheduled workflow", "description": "", "enabled": True, "steps": []},
+        headers=auth_headers,
+    )
+    member = await client.post(
+        "/api/v1/team",
+        json={
+            "email": "schedule-manager@example.com",
+            "full_name": "Schedule Manager",
+            "password": "manager123",
+            "role": "manager",
+        },
+        headers=auth_headers,
+    )
+    login = await client.post(
+        "/api/v1/auth/login", json={"email": member.json()["email"], "password": "manager123"}
+    )
+    manager_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    created = await client.post(
+        "/api/v1/schedules",
+        json={"name": "Every hour", "workflow_id": workflow.json()["id"], "cron": "0 * * * *"},
+        headers=manager_headers,
+    )
+    assert created.status_code == 201, created.text
+    listed = await client.get("/api/v1/schedules", headers=manager_headers)
+    assert any(item["id"] == created.json()["id"] for item in listed.json())
+
+
 async def test_invitation_link_creates_workspace_member_once(
     client: httpx.AsyncClient, auth_headers: dict[str, str]
 ) -> None:

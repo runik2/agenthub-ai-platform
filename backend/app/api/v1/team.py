@@ -158,7 +158,12 @@ async def update_team_user(
     admin: User = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ):
-    user = await session.get(User, user_id)
+    user = await session.scalar(
+        select(User).where(
+            User.id == user_id,
+            or_(User.workspace_id == workspace_owner_id(admin), User.id == workspace_owner_id(admin)),
+        )
+    )
     if not user:
         raise AppError("USER_NOT_FOUND", "User not found", 404)
     values = payload.model_dump(exclude_unset=True)
@@ -167,7 +172,11 @@ async def update_team_user(
     changing_admin = values.get("role") not in (None, "admin") or values.get("is_active") is False
     if user.role == "admin" and changing_admin:
         admins = await session.scalar(
-            select(func.count(User.id)).where(User.role == "admin", User.is_active.is_(True))
+            select(func.count(User.id)).where(
+                User.role == "admin",
+                User.is_active.is_(True),
+                or_(User.workspace_id == workspace_owner_id(admin), User.id == workspace_owner_id(admin)),
+            )
         )
         if (admins or 0) <= 1:
             raise AppError("LAST_ADMIN", "At least one active administrator is required", 409)
