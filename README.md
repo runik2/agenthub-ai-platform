@@ -18,14 +18,32 @@
 ## Что уже работает
 
 - Первичная настройка администратора, вход по JWT (Argon2id), защищённые маршруты, аудит входов.
+- Refresh-сессии, смена и сброс пароля, rate limiting входа, 2FA/TOTP и роли workspace: admin,
+  manager, operator, viewer. Приглашения в команду и изоляция ресурсов по workspace.
 - CRUD агентов: промпт, приветствие, провайдер, модель, температура, лимит токенов, статус, цвет, теги.
   6 шаблонов агентов, создание из шаблона, дублирование.
+- История промптов с авторами, unified diff, rollback и привязка версии промпта к evaluation.
 - CRUD провайдеров: Ollama и OpenAI-совместимые, проверка соединения, получение списка моделей,
   цены за 1M токенов, ключи шифруются (Fernet) и никогда не возвращаются в API.
 - **Реальный чат с агентом** через Ollama (`llama3.2:3b`) и любой OpenAI-совместимый `base_url`.
   История диалога, системный промпт, запись `llm_usage` (токены, latency, стоимость).
 - Дашборд: метрики, график активности, топ агентов, статусы провайдеров за 7/30 дней.
+- Workflow-студия: агентные шаги, whitelist-инструменты, условия, параллельные ветки, retries,
+  timeout, human approval и тестовый запуск. Конфигурации версионируются и восстанавливаются,
+  изменения пишутся в audit log.
+- Durable tasks, in-process очередь для local и ARQ/Redis-контур для Docker: статусы, retries,
+  сохранённые trace шагов и операторская очередь подтверждений.
+- Безопасные интеграции: HTTPS allowlist по домену и пути, запрет секретов в URL, approval для
+  опасных действий, HMAC-webhooks, idempotency, retries и журнал вызовов.
+- Память агентов и RAG: ручные факты, загрузка TXT/MD/CSV/JSON/PDF/DOCX, импорт веб-страниц,
+  чанкинг, embeddings, семантический поиск, источники ответа и версии документов.
+- Evaluations: контрольные кейсы, batch-прогоны, pass rate, latency/cost и сравнение моделей.
+- Экономика workspace: токены и стоимость по моделям, агентам и workflow, месячные бюджеты,
+  warning/exceeded статусы и fallback-провайдер.
+- Production-наблюдаемость: readiness DB/queue, Prometheus metrics, JSON-логи с correlation id,
+  Grafana dashboard, task traces, integration journal и PostgreSQL backup script.
 - Переключатель RU/EN (localStorage, по умолчанию RU), светлая/тёмная тема, адаптив до 390px.
+- Command Palette по Ctrl/⌘+K с поиском разделов и keyboard navigation.
 - Demo-данные создаются только при явной пометке: у демо-агентов тег `demo`, описание начинается
   с `Demo data ·`, демо-сообщения имеют `metadata.demo = true`.
 
@@ -91,13 +109,13 @@ ollama serve            # http://127.0.0.1:11434
 
 ```bash
 cd backend
-../.venv/Scripts/python.exe -m pytest -q          # 25 passed
+../.venv/Scripts/python.exe -m pytest -q          # полный backend suite
 ../.venv/Scripts/python.exe -m ruff check app tests
 ../.venv/Scripts/python.exe -m alembic upgrade head
 cd ../frontend && npm run build                    # tsc -b + vite build
 ```
 
-- `GET /health/live` → 200, `GET /health/ready` → `{"status":"ok","db":"ok","mode":"local"}`.
+- `GET /health/live` → 200, `GET /health/ready` проверяет API, DB и очередь и возвращает 503 при деградации.
 - Чат через Ollama: ответ получен, `llm_usage` записан (например 87 вход / 37 выход, latency 13.7 s).
 - Скриншоты 1280×800 и 390×844 на всех экранах, переключение RU→EN меняет заголовки и меню,
   горизонтального переполнения нет (`document.body.scrollWidth == innerWidth`).
@@ -107,9 +125,10 @@ cd ../frontend && npm run build                    # tsc -b + vite build
 ```
 backend/app/
   config.py           # Settings: APP_MODE, DATABASE_URL, секреты
-  db/                 # Base, session, ORM-модели (users, agents, llm_providers, conversations,
-                      # messages, llm_usage, audit_logs)
-  api/v1/             # auth, agents, providers, conversations, analytics, logs, settings, health
+  db/                 # Base, session, ORM-модели пользователей, агентов, workflow, tasks,
+                      # knowledge, evaluations, integrations, usage и audit logs
+  api/v1/             # auth, agents, providers, conversations, tasks, workflows, tools,
+                      # webhooks, knowledge, evaluations, team, analytics, logs, settings, health
   core/               # argon2+JWT, Fernet, единый формат ошибок, пагинация
   services/           # llm (Ollama/openai), chat, pricing, agent_templates, seed, bootstrap
   queue/              # Protocol TaskQueue + InProcessQueue (local) + ArqTaskQueue (docker)
@@ -117,8 +136,9 @@ backend/alembic/      # миграции; локальный старт испо
 frontend/src/
   i18n/{ru,en}.ts     # весь текст интерфейса; типы гарантируют совпадение ключей
   api/                # fetch-клиент с кодами ошибок, TanStack Query хуки
-  components/         # UI-кит, оболочка, модалки, тосты
-  pages/              # login, setup, dashboard, agents, agent form, chat, providers, logs, settings
+  components/         # UI-кит, оболочка, command palette и модалки
+  pages/              # agents, chat, workflows, tasks, tools, webhooks, knowledge,
+                      # memories, evaluations, team, analytics, logs, settings и setup
 ```
 
 **Двухрежимность.** Слой БД и очередь спрятаны за интерфейсами; режим выбирается `APP_MODE` и
@@ -162,35 +182,23 @@ DATABASE_HOST=db DATABASE_USER=agenthub DATABASE_NAME=agenthub \
 Архивы нужно хранить на отдельном persistent volume или в объектном хранилище и регулярно
 проверять восстановлением через `pg_restore`.
 
-## Ограничения этого этапа
+## Production-ограничения
 
-- Чат синхронный, без стриминга и без отмены запроса; SSE появится позже.
-- Заданий, workflow-движка, инструментов агентов, расписаний и полноценной аналитики нет — это
-  следующие этапы (в сайдбаре они помечены «скоро»).
-- Очередь и планировщик только как интерфейс и in-process заготовка.
-- Один тенант: агенты принадлежат владельцу, ролей две (admin/user), без команд и приглашений.
-- Rate limiting, refresh-токены и сброс пароля не реализованы.
-- Alembic настроен и проверен на SQLite, но локальный старт идёт через `create_all`.
-
-## Roadmap
-
-1. Этап 3: задания, очередь (ARQ + Redis), воркер, сохранение состояния и ретраи.
-2. Этап 4: workflow-движок (шаги, ветвления), инструменты агентов и права на них.
-3. Этап 5: расписания, полноценная аналитика, экспорт, CI и проверенный docker-контур.
-
-## Реализованные этапы 3–5
-
-Добавлены durable задачи и запуски (`pending/running/succeeded/failed`), retry с exponential backoff, local background execution, workflow definitions и schedules API. Local-контур использует SQLite и in-process asyncio; ARQ/Redis docker adapter написан, но локально не проверялся. Workflow steps декларативны и не исполняют arbitrary code.
-
-Новые endpoints: `/api/v1/tasks`, `/api/v1/workflows`, `/api/v1/schedules`. UI: `/tasks` и `/workflows`; auth и существующие API сохранены.
-
-Проверки: `cd backend; .venv\\Scripts\\python.exe -m pytest`, `ruff check app`, `cd frontend; npm run lint`. Docker-контур не заявляется проверенным: Docker/Redis/PostgreSQL в среде разработки отсутствуют.
+- Docker-контур написан и снабжён healthchecks, но в текущей Windows-среде Docker не установлен,
+  поэтому `docker compose up --build` здесь не запускался. Перед деплоем нужно выполнить smoke-тест
+  контейнеров, PostgreSQL, Redis, ARQ worker и scheduler в целевой среде.
+- Чат пока синхронный: streaming SSE и отмена долгого запроса остаются отдельным следующим улучшением.
+- Для production необходимо заменить demo credentials, задать собственные `JWT_SECRET` и
+  `SECRET_ENCRYPTION_KEY`, включить HTTPS и вынести backup-архивы на отдельное хранилище.
 
 ## Структура репозитория
 
 ### Примечание о текущей проверке
 
-Реализованы durable tasks через queue abstraction, retry с `next_run_at`, workflow execution с безопасным whitelist инструментов, cron scheduler, workflow run/update/delete и analytics summary/export. Docker-контур с Redis/ARQ/PostgreSQL в этой среде не запускался: Docker недоступен; его следует проверить интеграционно.
+Реализованы durable tasks через queue abstraction, retry с `next_run_at`, workflow execution с безопасным
+whitelist инструментов, cron scheduler, версионирование и восстановление workflow, operator approval,
+audit log, cron scheduler, analytics summary/export и readiness DB/queue. Docker-контур с
+Redis/ARQ/PostgreSQL в этой среде не запускался: Docker недоступен; его следует проверить интеграционно.
 
 ```
 backend/    FastAPI-приложение, тесты, миграции, скрипты
