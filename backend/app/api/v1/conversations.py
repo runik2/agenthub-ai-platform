@@ -12,7 +12,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, workspace_owner_id, write_audit
 from app.core.errors import AppError
 from app.core.pagination import Pagination, paginate
-from app.db.models import Agent, Conversation, LLMProvider, Message, User
+from app.db.models import (
+    Agent,
+    AgentMemory,
+    Conversation,
+    KnowledgeChunk,
+    KnowledgeDocument,
+    LLMProvider,
+    LLMUsage,
+    Message,
+    User,
+)
 from app.db.session import get_session
 from app.schemas.common import Page, StatusResponse
 from app.schemas.conversations import (
@@ -26,6 +36,7 @@ from app.schemas.conversations import (
 )
 from app.services import chat as chat_service
 from app.services import llm
+from app.services.budget import current_budget
 from app.services.pricing import compute_cost, estimate_tokens
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
@@ -195,7 +206,50 @@ async def stream_message(
             )
         ).all()
     )
-    messages = chat_service.build_history(agent, history, [], [])
+    budget = await current_budget(session, user)
+    if budget["status"] == "exceeded":
+        raise AppError("BUDGET_EXCEEDED", "Workspace model budget has been exceeded", 429, {"budget": budget})
+    memories = list(
+        (
+            await session.scalars(
+                select(AgentMemory)
+                .where(
+                    AgentMemory.owner_id == workspace_owner_id(user),
+                    (AgentMemory.agent_id == agent.id) | AgentMemory.agent_id.is_(None),
+                )
+                .order_by(AgentMemory.is_pinned.desc(), AgentMemory.updated_at.desc())
+                .limit(8)
+            )
+        ).all()
+    )
+    document_rows = list(
+        (
+            await session.scalars(
+                select(KnowledgeChunk)
+                .where(
+                    KnowledgeChunk.owner_id == workspace_owner_id(user),
+                    (KnowledgeChunk.agent_id == agent.id) | KnowledgeChunk.agent_id.is_(None),
+                )
+                .order_by(KnowledgeChunk.chunk_index.asc())
+                .limit(6)
+            )
+        ).all()
+    )
+    titles = (
+        dict(
+            (
+                await session.execute(
+                    select(KnowledgeDocument.id, KnowledgeDocument.title).where(
+                        KnowledgeDocument.id.in_({chunk.document_id for chunk in document_rows})
+                    )
+                )
+            ).all()
+        )
+        if document_rows
+        else {}
+    )
+    knowledge = [(chunk, titles.get(chunk.document_id, "Knowledge base")) for chunk in document_rows]
+    messages = chat_service.build_history(agent, history, memories, knowledge)
     started = time.perf_counter()
     model_name = agent.model_name or provider.default_model
 
@@ -229,6 +283,22 @@ async def stream_message(
                 meta={"estimated": True, "streamed": True},
             )
             session.add(assistant)
+            session.add(
+                LLMUsage(
+                    conversation_id=conversation.id,
+                    user_id=user.id,
+                    message_id=assistant.id,
+                    agent_id=agent.id,
+                    provider_id=provider.id,
+                    model_name=model_name,
+                    tokens_in=tokens_in,
+                    tokens_out=tokens_out,
+                    total_tokens=tokens_in + tokens_out,
+                    latency_ms=latency_ms,
+                    cost=cost,
+                    status="ok",
+                )
+            )
             conversation.message_count = (conversation.message_count or 0) + 2
             conversation.total_tokens = (conversation.total_tokens or 0) + tokens_in + tokens_out
             conversation.total_cost = (conversation.total_cost or 0) + cost
