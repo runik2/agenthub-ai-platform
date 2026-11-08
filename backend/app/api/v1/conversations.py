@@ -191,6 +191,17 @@ async def stream_message(
     provider = await session.get(LLMProvider, agent.provider_id)
     if provider is None or not provider.is_active or provider.owner_id != workspace_owner_id(user):
         raise AppError("PROVIDER_NOT_FOUND", "The provider of this agent is unavailable", 409)
+    fallback = (
+        await session.get(LLMProvider, agent.fallback_provider_id) if agent.fallback_provider_id else None
+    )
+    providers = [provider]
+    if (
+        fallback
+        and fallback.id != provider.id
+        and fallback.is_active
+        and fallback.owner_id == workspace_owner_id(user)
+    ):
+        providers.append(fallback)
 
     user_message = Message(
         conversation_id=conversation.id, role="user", content=payload.content.strip(), meta={}
@@ -257,11 +268,28 @@ async def stream_message(
         chunks: list[str] = []
         try:
             yield "event: start\ndata: {}\n\n"
-            async for chunk in llm.stream_tokens(
-                provider, model_name, messages, agent.temperature, agent.max_tokens
-            ):
-                chunks.append(chunk)
-                yield f"data: {json.dumps({'content': chunk}, ensure_ascii=False)}\n\n"
+            active_provider = provider
+            active_model = model_name
+            last_error: llm.LLMError | None = None
+            for candidate in providers:
+                candidate_model = (
+                    agent.model_name if candidate.id == providers[0].id else candidate.default_model
+                )
+                try:
+                    async for chunk in llm.stream_tokens(
+                        candidate, candidate_model, messages, agent.temperature, agent.max_tokens
+                    ):
+                        chunks.append(chunk)
+                        yield f"data: {json.dumps({'content': chunk}, ensure_ascii=False)}\n\n"
+                    active_provider = candidate
+                    active_model = candidate_model
+                    break
+                except llm.LLMError as exc:
+                    last_error = exc
+                    if chunks:
+                        raise
+            if not chunks and last_error:
+                raise last_error
             content = "".join(chunks).strip()
             if not content:
                 raise llm.LLMError("EMPTY_RESPONSE", "The model returned an empty answer")
@@ -269,7 +297,7 @@ async def stream_message(
             tokens_out = estimate_tokens(content)
             latency_ms = int((time.perf_counter() - started) * 1000)
             cost = compute_cost(
-                tokens_in, tokens_out, provider.input_price_per_1m, provider.output_price_per_1m
+                tokens_in, tokens_out, active_provider.input_price_per_1m, active_provider.output_price_per_1m
             )
             assistant = Message(
                 conversation_id=conversation.id,
@@ -278,8 +306,8 @@ async def stream_message(
                 tokens_in=tokens_in,
                 tokens_out=tokens_out,
                 latency_ms=latency_ms,
-                model_name=model_name,
-                provider_id=provider.id,
+                model_name=active_model,
+                provider_id=active_provider.id,
                 meta={"estimated": True, "streamed": True},
             )
             session.add(assistant)
@@ -289,8 +317,8 @@ async def stream_message(
                     user_id=user.id,
                     message_id=assistant.id,
                     agent_id=agent.id,
-                    provider_id=provider.id,
-                    model_name=model_name,
+                    provider_id=active_provider.id,
+                    model_name=active_model,
                     tokens_in=tokens_in,
                     tokens_out=tokens_out,
                     total_tokens=tokens_in + tokens_out,
