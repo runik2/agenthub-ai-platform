@@ -9,8 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError
 from app.core.metrics import metrics
-from app.db.models import Agent, IntegrationRun, IntegrationTool, LLMProvider, LLMUsage
 from app.services import llm
+from app.db.models import Agent, IntegrationRun, IntegrationTool, LLMProvider, LLMUsage, User
+from app.services.email import send_notification_email
 from app.services.pricing import compute_cost
 
 
@@ -135,6 +136,14 @@ async def _execute_steps(
                                     error=str(exc)[:500],
                                 )
                             )
+                            owner = await session.get(User, owner_id)
+                            if owner:
+                                await send_notification_email(
+                                    owner.email,
+                                    f"AgentHub: ошибка integration tool ({tool_config.name})",
+                                    f"Workflow {workflow_id} не смог выполнить {tool_config.name}.\n\n"
+                                    f"{str(exc)[:500]}",
+                                )
                         raise
                     if session is not None:
                         session.add(
