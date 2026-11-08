@@ -15,6 +15,7 @@ import {
   useConversations,
   useSendMessage,
 } from "../api/hooks";
+import { streamRequest } from "../api/client";
 import { ConfirmDialog, useToast } from "../components/overlays";
 import { Badge, Button, EmptyState, IconButton, Skeleton, Spinner, Textarea } from "../components/ui";
 import { useI18n } from "../i18n";
@@ -34,6 +35,8 @@ export function AgentChatPage() {
   const [pendingText, setPendingText] = useState<string | null>(null);
   const [mobilePane, setMobilePane] = useState<"list" | "chat">("list");
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  const [streamingText, setStreamingText] = useState("");
+  const [isStreaming, setIsStreaming] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -50,7 +53,7 @@ export function AgentChatPage() {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [conversationQuery.data?.messages.length, pendingText, sendMessage.isPending]);
+  }, [conversationQuery.data?.messages.length, pendingText, streamingText, sendMessage.isPending]);
 
   const messages = conversationQuery.data?.messages ?? [];
   const agent = agentQuery.data;
@@ -69,27 +72,40 @@ export function AgentChatPage() {
 
   const send = () => {
     const content = draft.trim();
-    if (!content || !selectedId || sendMessage.isPending) return;
+    if (!content || !selectedId || sendMessage.isPending || isStreaming) return;
     abortRef.current = new AbortController();
     setPendingText(content);
+    setStreamingText("");
+    setIsStreaming(true);
     setDraft("");
-    sendMessage.mutate({ content, signal: abortRef.current.signal }, {
-      onSuccess: () => {
+    void streamRequest(
+      `/conversations/${selectedId}/messages/stream`,
+      { content },
+      (chunk) => setStreamingText((current) => current + chunk),
+      abortRef.current.signal,
+    ).then(
+      async () => {
         abortRef.current = null;
+        setIsStreaming(false);
         setPendingText(null);
+        setStreamingText("");
+        await Promise.all([conversationQuery.refetch(), conversations.refetch()]);
       },
-      onError: (error) => {
+      (error: unknown) => {
         abortRef.current = null;
+        setIsStreaming(false);
         if (error instanceof DOMException && error.name === "AbortError") {
           setPendingText(null);
           setDraft(content);
+          setStreamingText("");
           return;
         }
         setPendingText(null);
         setDraft(content);
-        toast.push(t(`errors.${errorCode(error)}`), "error");
+        setStreamingText("");
+        toast.push(t(`errors.${errorCode(error as Error)}`), "error");
       },
-    });
+    );
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -305,7 +321,16 @@ export function AgentChatPage() {
                 </div>
               ) : null}
 
-              {sendMessage.isPending ? (
+              {streamingText ? (
+                <div className="flex flex-col items-start gap-1">
+                  <span className="px-1 text-[10px] uppercase tracking-wide text-muted">{t("chat.assistant")}</span>
+                  <div className="max-w-[92%] whitespace-pre-wrap break-words rounded-xl border border-accent/30 bg-accent/5 px-3 py-2 text-[13px] leading-relaxed text-ink sm:max-w-[80%]">
+                    {streamingText}
+                  </div>
+                </div>
+              ) : null}
+
+              {isStreaming || sendMessage.isPending ? (
                 <div className="flex items-center gap-2 px-1 text-[12px] text-muted">
                   <Spinner size={12} />
                   {t("chat.thinking")}
@@ -343,7 +368,7 @@ export function AgentChatPage() {
               disabled={!selectedId}
               className="max-h-32 min-h-[42px] resize-none"
             />
-            <Button onClick={send} disabled={!draft.trim() || !selectedId || sendMessage.isPending}>
+            <Button onClick={send} disabled={!draft.trim() || !selectedId || sendMessage.isPending || isStreaming}>
               <Send size={15} />
               <span className="hidden sm:inline">{t("chat.send")}</span>
             </Button>

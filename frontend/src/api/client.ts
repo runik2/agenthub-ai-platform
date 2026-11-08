@@ -140,3 +140,42 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 
   return payload as T;
 }
+
+export async function streamRequest(
+  path: string,
+  body: unknown,
+  onChunk: (content: string) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const token = getToken();
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: {
+      Accept: "text/event-stream",
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!response.ok || !response.body) {
+    throw new ApiError("STREAM_FAILED", response.status, `HTTP ${response.status}`);
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+    const events = buffer.split("\n\n");
+    buffer = events.pop() ?? "";
+    for (const event of events) {
+      const data = event.split("\n").find((line) => line.startsWith("data: "))?.slice(6);
+      if (!data) continue;
+      const payload = JSON.parse(data) as { content?: string; code?: string; message?: string };
+      if (payload.code) throw new ApiError(payload.code, 502, payload.message ?? payload.code);
+      if (payload.content) onChunk(payload.content);
+    }
+    if (done) break;
+  }
+}
