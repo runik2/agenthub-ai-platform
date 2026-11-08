@@ -57,6 +57,10 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     sentry_dsn: str = ""
     sentry_traces_sample_rate: float = 0.0
+    otel_enabled: bool = False
+    otel_service_name: str = "agenthub-api"
+    otel_exporter_otlp_endpoint: str = ""
+    otel_traces_sample_rate: float = 0.1
 
     @field_validator("app_mode")
     @classmethod

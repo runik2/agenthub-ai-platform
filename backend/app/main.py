@@ -70,6 +70,32 @@ def configure_sentry() -> None:
         logger.warning("SENTRY_DSN is set but sentry-sdk is not installed")
 
 
+def configure_opentelemetry() -> None:
+    """Enable OTLP tracing only when explicitly configured."""
+    settings = get_settings()
+    if not settings.otel_enabled:
+        return
+    try:
+        from opentelemetry import trace
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+        from opentelemetry.sdk.resources import Resource
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+        resource = Resource.create(
+            {"service.name": settings.otel_service_name, "service.version": settings.version}
+        )
+        provider = TracerProvider(resource=resource)
+        exporter = OTLPSpanExporter(endpoint=settings.otel_exporter_otlp_endpoint or None)
+        provider.add_span_processor(BatchSpanProcessor(exporter))
+        trace.set_tracer_provider(provider)
+        FastAPIInstrumentor.instrument()
+        logger.info("OpenTelemetry tracing enabled")
+    except ImportError:
+        logger.warning("OTEL_ENABLED is set but OpenTelemetry packages are not installed")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
@@ -79,6 +105,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         raise RuntimeError("APP_MODE=docker requires a strong JWT_SECRET")
     configure_logging()
     configure_sentry()
+    configure_opentelemetry()
     await init_db()
     session_factory = get_session_factory()
     async with session_factory() as session:
