@@ -1,31 +1,31 @@
-import { type ReactNode } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { getToken } from "./api/client";
 import { useMe, useSetupStatus } from "./api/hooks";
 import { AppShell } from "./components/AppShell";
 import { Spinner } from "./components/ui";
-import { AgentChatPage } from "./pages/AgentChatPage";
-import { AgentFormPage } from "./pages/AgentFormPage";
-import { AgentsPage } from "./pages/AgentsPage";
-import { DashboardPage } from "./pages/DashboardPage";
-import { LoginPage } from "./pages/LoginPage";
-import { LogsPage } from "./pages/LogsPage";
-import { ProvidersPage } from "./pages/ProvidersPage";
-import { SettingsPage } from "./pages/SettingsPage";
-import { SetupPage } from "./pages/SetupPage";
-import { TasksPage } from "./pages/TasksPage";
-import { WorkflowsPage } from "./pages/WorkflowsPage";
-import { SchedulesPage } from "./pages/SchedulesPage";
-import { AnalyticsPage } from "./pages/AnalyticsPage";
-import { MemoriesPage } from "./pages/MemoriesPage";
-import { ToolsPage } from "./pages/ToolsPage";
-import { PromptVersionsPage } from "./pages/PromptVersionsPage";
-import { TeamPage } from "./pages/TeamPage";
-import { KnowledgePage } from "./pages/KnowledgePage";
-import { EvaluationsPage } from "./pages/EvaluationsPage";
-import { WebhooksPage } from "./pages/WebhooksPage";
-import { InvitePage } from "./pages/InvitePage";
+const AgentChatPage = lazy(() => import("./pages/AgentChatPage").then(module => ({ default: module.AgentChatPage })));
+const AgentFormPage = lazy(() => import("./pages/AgentFormPage").then(module => ({ default: module.AgentFormPage })));
+const AgentsPage = lazy(() => import("./pages/AgentsPage").then(module => ({ default: module.AgentsPage })));
+const DashboardPage = lazy(() => import("./pages/DashboardPage").then(module => ({ default: module.DashboardPage })));
+const LoginPage = lazy(() => import("./pages/LoginPage").then(module => ({ default: module.LoginPage })));
+const LogsPage = lazy(() => import("./pages/LogsPage").then(module => ({ default: module.LogsPage })));
+const ProvidersPage = lazy(() => import("./pages/ProvidersPage").then(module => ({ default: module.ProvidersPage })));
+const SettingsPage = lazy(() => import("./pages/SettingsPage").then(module => ({ default: module.SettingsPage })));
+const SetupPage = lazy(() => import("./pages/SetupPage").then(module => ({ default: module.SetupPage })));
+const TasksPage = lazy(() => import("./pages/TasksPage").then(module => ({ default: module.TasksPage })));
+const WorkflowsPage = lazy(() => import("./pages/WorkflowsPage").then(module => ({ default: module.WorkflowsPage })));
+const SchedulesPage = lazy(() => import("./pages/SchedulesPage").then(module => ({ default: module.SchedulesPage })));
+const AnalyticsPage = lazy(() => import("./pages/AnalyticsPage").then(module => ({ default: module.AnalyticsPage })));
+const MemoriesPage = lazy(() => import("./pages/MemoriesPage").then(module => ({ default: module.MemoriesPage })));
+const ToolsPage = lazy(() => import("./pages/ToolsPage").then(module => ({ default: module.ToolsPage })));
+const PromptVersionsPage = lazy(() => import("./pages/PromptVersionsPage").then(module => ({ default: module.PromptVersionsPage })));
+const TeamPage = lazy(() => import("./pages/TeamPage").then(module => ({ default: module.TeamPage })));
+const KnowledgePage = lazy(() => import("./pages/KnowledgePage").then(module => ({ default: module.KnowledgePage })));
+const EvaluationsPage = lazy(() => import("./pages/EvaluationsPage").then(module => ({ default: module.EvaluationsPage })));
+const WebhooksPage = lazy(() => import("./pages/WebhooksPage").then(module => ({ default: module.WebhooksPage })));
+const InvitePage = lazy(() => import("./pages/InvitePage").then(module => ({ default: module.InvitePage })));
 
 function Splash() {
   return (
@@ -70,8 +70,9 @@ function SetupGuard({ children }: { children: ReactNode }) {
 
 export default function App() {
   return (
-    <SetupGuard>
-      <Routes>
+    <Suspense fallback={<Splash />}>
+      <SetupGuard>
+        <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/invite" element={<InvitePage />} />
         <Route path="/setup" element={<SetupPage />} />
@@ -151,7 +152,8 @@ export default function App() {
         <Route path="/evaluations" element={<RequireAuth><EvaluationsPage /></RequireAuth>} />
         <Route path="/webhooks" element={<RequireAuth><WebhooksPage /></RequireAuth>} />
         <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </SetupGuard>
+        </Routes>
+      </SetupGuard>
+    </Suspense>
   );
 }
