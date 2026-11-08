@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import logging
 import time
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -39,6 +41,71 @@ class LLMResult:
     model: str
     estimated: bool = False
     raw_usage: dict[str, Any] = field(default_factory=dict)
+
+
+async def stream_tokens(
+    provider: LLMProvider,
+    model: str,
+    messages: list[dict[str, str]],
+    temperature: float,
+    max_tokens: int,
+) -> AsyncIterator[str]:
+    """Yield assistant text chunks from Ollama or an OpenAI-compatible provider."""
+    base = _base_url(provider)
+    model_name = model or provider.default_model
+    if not model_name:
+        raise LLMError("MODEL_NOT_SET", "No model selected for this agent or provider")
+
+    payload = {
+        "model": model_name,
+        "messages": messages,
+        "stream": True,
+    }
+    if provider.kind == "ollama":
+        payload["options"] = {"temperature": temperature, "num_predict": max_tokens}
+        url = f"{base}/api/chat"
+    else:
+        payload.update({"temperature": temperature, "max_tokens": max_tokens})
+        url = f"{base}/chat/completions"
+
+    try:
+        async with _client() as client, client.stream(
+            "POST", url, headers=_headers(provider), json=payload
+        ) as response:
+                if response.status_code >= 400:
+                    snippet = (await response.aread()).decode(errors="replace")[:300]
+                    raise LLMError("PROVIDER_ERROR", f"Provider error {response.status_code}: {snippet}")
+                async for line in response.aiter_lines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    if provider.kind == "ollama":
+                        try:
+                            chunk = json.loads(line)
+                        except ValueError as exc:
+                            raise LLMError("PROVIDER_BAD_RESPONSE", "Provider returned malformed stream data") from exc
+                        content = str((chunk.get("message") or {}).get("content") or "")
+                        if content:
+                            yield content
+                        if chunk.get("done"):
+                            break
+                    else:
+                        if line.startswith("data:"):
+                            data = line[5:].strip()
+                            if data == "[DONE]":
+                                break
+                            try:
+                                chunk = json.loads(data)
+                            except ValueError as exc:
+                                raise LLMError("PROVIDER_BAD_RESPONSE", "Provider returned malformed SSE data") from exc
+                            choices = chunk.get("choices") or []
+                            delta = (choices[0].get("delta") or {}).get("content") if choices else ""
+                            if delta:
+                                yield str(delta)
+    except LLMError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - normalised below
+        raise _network_error(exc) from exc
 
 
 def _base_url(provider: LLMProvider) -> str:
