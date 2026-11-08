@@ -156,19 +156,35 @@ frontend/src/
 404/409/422/502. Пароли — Argon2id. Секреты провайдеров — Fernet с ключом из `SECRET_ENCRYPTION_KEY`
 (или производным от `JWT_SECRET`). Ключи не попадают ни в ответы API, ни в логи; это покрыто тестом.
 
-## Docker-контур (не проверен)
+## Docker-контур (готов к проверке)
 
 ```bash
-docker compose up --build      # НЕ ЗАПУСКАЛОСЬ: на машине нет Docker
+docker compose up --build
 ```
 
 Сервисы: `db` (PostgreSQL 16), `redis`, `api` (миграции + uvicorn), `worker` (ARQ), `scheduler`,
 `web` (nginx со сборкой Vite и проксированием `/api`). Переменные: `POSTGRES_PASSWORD`, `JWT_SECRET`,
 `OLLAMA_BASE_URL` (для Ollama на хосте — `http://host.docker.internal:11434`).
 
-В этой среде Docker-контур не запускался, поэтому перед production-деплоем нужно выполнить
-smoke-проверку образов и внешних сервисов. Воркер обрабатывает durable tasks, а scheduler
+В текущей среде фактический запуск Docker Engine недоступен, поэтому перед production-деплоем
+нужно выполнить smoke-проверку образов и внешних сервисов. Воркер обрабатывает durable tasks, а scheduler
 создаёт задачи по cron и переотправляет отложенные retries.
+
+Минимальный smoke-тест:
+
+```powershell
+docker compose config --quiet
+docker compose build
+docker compose up -d
+docker compose ps
+Invoke-WebRequest http://localhost:8000/health/ready
+Invoke-WebRequest http://localhost:3000
+```
+
+Для production задайте `POSTGRES_PASSWORD`, `JWT_SECRET`, `CORS_ORIGINS`, `SENTRY_DSN`
+и SMTP-параметры через секреты окружения. Gmail, Telegram, Notion, Google Calendar и CRM
+подключаются через HTTPS bridge; токены не передаются в URL, опасные операции защищаются
+approval и журналом интеграций.
 
 ### PostgreSQL backup
 
@@ -188,7 +204,8 @@ DATABASE_HOST=db DATABASE_USER=agenthub DATABASE_NAME=agenthub \
 - Docker-контур написан и снабжён healthchecks, но в текущей Windows-среде Docker не установлен,
   поэтому `docker compose up --build` здесь не запускался. Перед деплоем нужно выполнить smoke-тест
   контейнеров, PostgreSQL, Redis, ARQ worker и scheduler в целевой среде.
-- Чат пока синхронный: streaming SSE и отмена долгого запроса остаются отдельным следующим улучшением.
+- Чат поддерживает SSE-streaming и отмену долгого запроса; fallback включается при сбое
+  первичного провайдера до получения первого токена.
 - Для production необходимо заменить demo credentials, задать собственные `JWT_SECRET` и
   `SECRET_ENCRYPTION_KEY`, включить HTTPS и вынести backup-архивы на отдельное хранилище.
 
