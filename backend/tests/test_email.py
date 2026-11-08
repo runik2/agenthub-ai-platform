@@ -21,3 +21,18 @@ async def test_password_reset_email_builds_a_one_time_link(monkeypatch) -> None:
     assert sent["to"] == "person@example.test"
     assert "https://app.example.test/login?reset_token=token-123" in sent["body"]
     assert "AgentHub" in sent["subject"]
+
+
+@pytest.mark.asyncio
+async def test_notification_email_is_best_effort(monkeypatch) -> None:
+    settings = get_settings()
+    monkeypatch.setattr(settings, "smtp_host", "smtp.example.test")
+    sent: dict[str, str] = {}
+    monkeypatch.setattr(
+        email,
+        "_send_smtp",
+        lambda to, subject, body: sent.update(to=to, subject=subject, body=body),
+    )
+
+    assert await email.send_notification_email("person@example.test", "Provider failed", "Details") is True
+    assert sent == {"to": "person@example.test", "subject": "Provider failed", "body": "Details"}

@@ -37,6 +37,7 @@ from app.schemas.conversations import (
 from app.services import chat as chat_service
 from app.services import llm
 from app.services.budget import current_budget
+from app.services.email import send_notification_email
 from app.services.pricing import compute_cost, estimate_tokens
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
@@ -347,6 +348,11 @@ async def stream_message(
         except (llm.LLMError, Exception) as exc:
             await session.rollback()
             code = exc.code if isinstance(exc, llm.LLMError) else "STREAM_INTERRUPTED"
+            await send_notification_email(
+                user.email,
+                f"AgentHub: ошибка генерации ({code})",
+                f"В разговоре {conversation.id} произошла ошибка генерации.\n\n{str(exc)[:500]}",
+            )
             error_data = json.dumps({"code": code, "message": str(exc)}, ensure_ascii=False)
             yield f"event: error\ndata: {error_data}\n\n"
 

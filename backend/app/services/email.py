@@ -45,3 +45,16 @@ async def send_password_reset_email(to_email: str, token: str) -> bool:
     except (OSError, smtplib.SMTPException):
         logger.exception("Password reset email delivery failed")
         return False
+
+
+async def send_notification_email(to_email: str, subject: str, body: str) -> bool:
+    """Best-effort operational notification; SMTP remains optional in local mode."""
+    if not get_settings().smtp_host:
+        logger.info("SMTP is not configured; notification email was skipped")
+        return False
+    try:
+        await asyncio.to_thread(_send_smtp, to_email, subject[:160], body[:10_000])
+        return True
+    except (OSError, smtplib.SMTPException):
+        logger.exception("Notification email delivery failed")
+        return False
