@@ -55,6 +55,8 @@ class Settings(BaseSettings):
 
     seed_demo_data: bool = True
     log_level: str = "INFO"
+    sentry_dsn: str = ""
+    sentry_traces_sample_rate: float = 0.0
 
     @field_validator("app_mode")
     @classmethod

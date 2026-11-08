@@ -52,6 +52,24 @@ def configure_logging() -> None:
         handler.setFormatter(JsonFormatter())
 
 
+def configure_sentry() -> None:
+    settings = get_settings()
+    if not settings.sentry_dsn:
+        return
+    try:
+        import sentry_sdk
+
+        sentry_sdk.init(
+            dsn=settings.sentry_dsn,
+            traces_sample_rate=max(0.0, min(settings.sentry_traces_sample_rate, 1.0)),
+            environment=settings.app_mode,
+            release=settings.version,
+        )
+        logger.info("Sentry observability enabled")
+    except ImportError:
+        logger.warning("SENTRY_DSN is set but sentry-sdk is not installed")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
@@ -60,6 +78,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     ):
         raise RuntimeError("APP_MODE=docker requires a strong JWT_SECRET")
     configure_logging()
+    configure_sentry()
     await init_db()
     session_factory = get_session_factory()
     async with session_factory() as session:
