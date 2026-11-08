@@ -58,15 +58,28 @@ async def create_task(
         if workflow and not workflow_requires_approval:
             tool_ids = [step.get("tool_id") for step in workflow.steps or [] if step.get("tool_id")]
             if tool_ids:
-                workflow_requires_approval = bool(
-                    await session.scalar(
-                        select(IntegrationTool.id).where(
-                            IntegrationTool.id.in_(tool_ids),
-                            IntegrationTool.owner_id == workspace_owner_id(user),
-                            IntegrationTool.requires_approval.is_(True),
+                tool_rows = list(
+                    (
+                        await session.scalars(
+                            select(IntegrationTool).where(
+                                IntegrationTool.id.in_(tool_ids),
+                                IntegrationTool.owner_id == workspace_owner_id(user),
+                            )
                         )
-                    )
+                    ).all()
                 )
+                forbidden = [
+                    tool.name
+                    for tool in tool_rows
+                    if user.role not in (tool.allowed_roles or [])
+                ]
+                if forbidden:
+                    raise AppError(
+                        "FORBIDDEN",
+                        f"Your role cannot run integration tools: {', '.join(forbidden[:3])}",
+                        403,
+                    )
+                workflow_requires_approval = any(tool.requires_approval for tool in tool_rows)
     task = Task(owner_id=workspace_owner_id(user), requires_approval=workflow_requires_approval, **values)
     if workflow_requires_approval:
         task.status = "waiting_approval"
