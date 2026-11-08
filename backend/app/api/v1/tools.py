@@ -37,8 +37,7 @@ TOOL_TEMPLATES = [
         "allowed_path": "/gmail/create-draft",
         "requires_approval": True,
         "setup_hint": (
-            "Используйте OAuth bridge с секретами вне AgentHub; "
-            "для отправки оставьте approval включённым."
+            "Используйте OAuth bridge с секретами вне AgentHub; для отправки оставьте approval включённым."
         ),
     },
     {
@@ -120,6 +119,8 @@ async def owned_tool(tool_id: str, user: User, session: AsyncSession) -> Integra
     )
     if not tool:
         raise AppError("TOOL_NOT_FOUND", "Tool not found", 404)
+    if user.role not in (tool.allowed_roles or []):
+        raise AppError("FORBIDDEN", "Your role is not allowed to use this integration tool", 403)
     return tool
 
 

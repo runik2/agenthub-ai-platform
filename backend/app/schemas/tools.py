@@ -10,6 +10,7 @@ class ToolCreate(BaseModel):
     method: str = Field(default="POST", pattern="^(GET|POST|PUT|PATCH|DELETE)$")
     base_url: str = Field(min_length=8, max_length=500)
     allowed_path: str = Field(default="/", min_length=1, max_length=300)
+    allowed_roles: list[str] = Field(default_factory=lambda: ["admin", "manager", "operator"])
     requires_approval: bool = True
     is_active: bool = True
 
@@ -18,6 +19,15 @@ class ToolCreate(BaseModel):
     def normalize_method(cls, value: str) -> str:
         return value.upper()
 
+    @field_validator("allowed_roles")
+    @classmethod
+    def validate_roles(cls, value: list[str]) -> list[str]:
+        allowed = {"admin", "manager", "operator", "viewer"}
+        roles = sorted(set(value))
+        if not roles or any(role not in allowed for role in roles):
+            raise ValueError("allowed_roles contains an unsupported role")
+        return roles
+
 
 class ToolUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
@@ -25,6 +35,7 @@ class ToolUpdate(BaseModel):
     method: str | None = Field(default=None, pattern="^(GET|POST|PUT|PATCH|DELETE)$")
     base_url: str | None = Field(default=None, min_length=8, max_length=500)
     allowed_path: str | None = Field(default=None, min_length=1, max_length=300)
+    allowed_roles: list[str] | None = None
     requires_approval: bool | None = None
     is_active: bool | None = None
 
@@ -32,6 +43,13 @@ class ToolUpdate(BaseModel):
     @classmethod
     def normalize_method(cls, value: str | None) -> str | None:
         return value.upper() if value else value
+
+    @field_validator("allowed_roles")
+    @classmethod
+    def validate_roles(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return value
+        return ToolCreate.validate_roles(value)
 
 
 class ToolOut(ToolCreate):

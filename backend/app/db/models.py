@@ -100,9 +100,7 @@ class LLMProvider(TimestampMixin, Base):
     models_cache: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     extra_headers: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
-    agents: Mapped[list[Agent]] = relationship(
-        back_populates="provider", foreign_keys="Agent.provider_id"
-    )
+    agents: Mapped[list[Agent]] = relationship(back_populates="provider", foreign_keys="Agent.provider_id")
     owner: Mapped[User] = relationship()
 
 
@@ -133,9 +131,7 @@ class Agent(TimestampMixin, Base):
     )
 
     owner: Mapped[User] = relationship(back_populates="agents")
-    provider: Mapped[LLMProvider | None] = relationship(
-        back_populates="agents", foreign_keys=[provider_id]
-    )
+    provider: Mapped[LLMProvider | None] = relationship(back_populates="agents", foreign_keys=[provider_id])
 
 
 class Conversation(TimestampMixin, Base):
@@ -237,6 +233,9 @@ class IntegrationTool(TimestampMixin, Base):
     method: Mapped[str] = mapped_column(String(10), default="POST", nullable=False)
     base_url: Mapped[str] = mapped_column(String(500), nullable=False)
     allowed_path: Mapped[str] = mapped_column(String(300), default="/", nullable=False)
+    allowed_roles: Mapped[list] = mapped_column(
+        JSON, default=lambda: ["admin", "manager", "operator"], nullable=False
+    )
     requires_approval: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
