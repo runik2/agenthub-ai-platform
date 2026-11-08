@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import json
+import time
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, workspace_owner_id, write_audit
 from app.core.errors import AppError
 from app.core.pagination import Pagination, paginate
-from app.db.models import Agent, Conversation, Message, User
+from app.db.models import Agent, Conversation, LLMProvider, Message, User
 from app.db.session import get_session
 from app.schemas.common import Page, StatusResponse
 from app.schemas.conversations import (
@@ -20,6 +25,8 @@ from app.schemas.conversations import (
     SendMessageResponse,
 )
 from app.services import chat as chat_service
+from app.services import llm
+from app.services.pricing import compute_cost, estimate_tokens
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
@@ -155,4 +162,98 @@ async def send_message(
         user_message=MessageOut.model_validate(result["user_message"]),
         assistant_message=MessageOut.model_validate(result["assistant_message"]),
         usage=result["usage"],
+    )
+
+
+@router.post("/{conversation_id}/messages/stream")
+async def stream_message(
+    conversation_id: str,
+    payload: SendMessageRequest,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> StreamingResponse:
+    """Stream provider chunks as SSE and persist the completed assistant reply."""
+    conversation = await _get_conversation(session, user, conversation_id)
+    agent = await session.get(Agent, conversation.agent_id)
+    if agent is None or not agent.provider_id:
+        raise AppError("AGENT_NO_PROVIDER", "This agent has no model provider attached", 409)
+    provider = await session.get(LLMProvider, agent.provider_id)
+    if provider is None or not provider.is_active or provider.owner_id != workspace_owner_id(user):
+        raise AppError("PROVIDER_NOT_FOUND", "The provider of this agent is unavailable", 409)
+
+    user_message = Message(
+        conversation_id=conversation.id, role="user", content=payload.content.strip(), meta={}
+    )
+    session.add(user_message)
+    await session.flush()
+    history = list(
+        (
+            await session.scalars(
+                select(Message)
+                .where(Message.conversation_id == conversation.id)
+                .order_by(Message.created_at.asc())
+            )
+        ).all()
+    )
+    messages = chat_service.build_history(agent, history, [], [])
+    started = time.perf_counter()
+    model_name = agent.model_name or provider.default_model
+
+    async def events():
+        chunks: list[str] = []
+        try:
+            yield "event: start\ndata: {}\n\n"
+            async for chunk in llm.stream_tokens(
+                provider, model_name, messages, agent.temperature, agent.max_tokens
+            ):
+                chunks.append(chunk)
+                yield f"data: {json.dumps({'content': chunk}, ensure_ascii=False)}\n\n"
+            content = "".join(chunks).strip()
+            if not content:
+                raise llm.LLMError("EMPTY_RESPONSE", "The model returned an empty answer")
+            tokens_in = estimate_tokens(" ".join(item["content"] for item in messages))
+            tokens_out = estimate_tokens(content)
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            cost = compute_cost(
+                tokens_in, tokens_out, provider.input_price_per_1m, provider.output_price_per_1m
+            )
+            assistant = Message(
+                conversation_id=conversation.id,
+                role="assistant",
+                content=content,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                latency_ms=latency_ms,
+                model_name=model_name,
+                provider_id=provider.id,
+                meta={"estimated": True, "streamed": True},
+            )
+            session.add(assistant)
+            conversation.message_count = (conversation.message_count or 0) + 2
+            conversation.total_tokens = (conversation.total_tokens or 0) + tokens_in + tokens_out
+            conversation.total_cost = (conversation.total_cost or 0) + cost
+            conversation.last_message_at = datetime.now(UTC)
+            if not conversation.title:
+                conversation.title = payload.content.strip()[:60]
+            await session.commit()
+            done_data = json.dumps(
+                {
+                    "message_id": assistant.id,
+                    "tokens_in": tokens_in,
+                    "tokens_out": tokens_out,
+                    "latency_ms": latency_ms,
+                },
+                ensure_ascii=False,
+            )
+            yield f"event: done\ndata: {done_data}\n\n"
+        except (llm.LLMError, Exception) as exc:
+            await session.rollback()
+            code = exc.code if isinstance(exc, llm.LLMError) else "STREAM_INTERRUPTED"
+            error_data = json.dumps({"code": code, "message": str(exc)}, ensure_ascii=False)
+            yield f"event: error\ndata: {error_data}\n\n"
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

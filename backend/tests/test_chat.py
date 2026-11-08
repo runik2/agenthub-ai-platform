@@ -78,6 +78,35 @@ async def test_chat_records_history_and_usage(
     assert success[0]["cost"] == 0.000192
 
 
+async def test_chat_stream_persists_completed_reply(
+    client: httpx.AsyncClient, auth_headers: dict[str, str], mock_llm
+) -> None:
+    context = await _prepare(client, auth_headers)
+    conversation_id = context["conversation"]["id"]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/chat"
+        return httpx.Response(
+            200,
+            text='{"message":{"content":"Stream "},"done":false}\n'
+            '{"message":{"content":"answer"},"done":true}\n',
+        )
+
+    mock_llm["handler"] = handler
+    response = await client.post(
+        f"/api/v1/conversations/{conversation_id}/messages/stream",
+        json={"content": "Stream this"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    assert 'event: start' in response.text
+    assert '"content": "Stream "' in response.text
+    assert 'event: done' in response.text
+
+    detail = await client.get(f"/api/v1/conversations/{conversation_id}", headers=auth_headers)
+    assert [message["content"] for message in detail.json()["messages"]] == ["Stream this", "Stream answer"]
+
+
 async def test_chat_uses_system_prompt_and_history(
     client: httpx.AsyncClient, auth_headers: dict[str, str], mock_llm
 ) -> None:
