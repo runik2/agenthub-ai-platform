@@ -34,6 +34,7 @@ export function AgentChatPage() {
   const [pendingText, setPendingText] = useState<string | null>(null);
   const [mobilePane, setMobilePane] = useState<"list" | "chat">("list");
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   const conversationQuery = useConversation(selectedId);
@@ -69,11 +70,21 @@ export function AgentChatPage() {
   const send = () => {
     const content = draft.trim();
     if (!content || !selectedId || sendMessage.isPending) return;
+    abortRef.current = new AbortController();
     setPendingText(content);
     setDraft("");
-    sendMessage.mutate(content, {
-      onSuccess: () => setPendingText(null),
+    sendMessage.mutate({ content, signal: abortRef.current.signal }, {
+      onSuccess: () => {
+        abortRef.current = null;
+        setPendingText(null);
+      },
       onError: (error) => {
+        abortRef.current = null;
+        if (error instanceof DOMException && error.name === "AbortError") {
+          setPendingText(null);
+          setDraft(content);
+          return;
+        }
         setPendingText(null);
         setDraft(content);
         toast.push(t(`errors.${errorCode(error)}`), "error");
@@ -298,6 +309,13 @@ export function AgentChatPage() {
                 <div className="flex items-center gap-2 px-1 text-[12px] text-muted">
                   <Spinner size={12} />
                   {t("chat.thinking")}
+                  <button
+                    type="button"
+                    className="rounded-md border border-line px-2 py-1 text-[11px] text-ink hover:bg-raised"
+                    onClick={() => abortRef.current?.abort()}
+                  >
+                    Остановить
+                  </button>
                 </div>
               ) : null}
             </>
@@ -325,7 +343,7 @@ export function AgentChatPage() {
               disabled={!selectedId}
               className="max-h-32 min-h-[42px] resize-none"
             />
-            <Button onClick={send} disabled={!draft.trim() || !selectedId} loading={sendMessage.isPending}>
+            <Button onClick={send} disabled={!draft.trim() || !selectedId || sendMessage.isPending}>
               <Send size={15} />
               <span className="hidden sm:inline">{t("chat.send")}</span>
             </Button>

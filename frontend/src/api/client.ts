@@ -41,6 +41,7 @@ interface RequestOptions {
   body?: unknown;
   query?: Record<string, string | number | boolean | undefined | null>;
   _retry?: boolean;
+  signal?: AbortSignal;
 }
 
 function buildQuery(query?: RequestOptions["query"]): string {
@@ -77,8 +78,10 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
       method: options.method ?? "GET",
       headers,
       body: options.body === undefined ? undefined : multipart ? (options.body as FormData) : JSON.stringify(options.body),
+      signal: options.signal,
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
     throw new ApiError("NETWORK_ERROR", 0, "Network request failed");
   }
 

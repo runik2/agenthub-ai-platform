@@ -239,10 +239,11 @@ export function useConversationMutations() {
 export function useSendMessage(conversationId: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (content: string) =>
+    mutationFn: ({ content, signal }: { content: string; signal?: AbortSignal }) =>
       request<SendMessageResponse>(`/conversations/${conversationId}/messages`, {
         method: "POST",
         body: { content },
+        signal,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["conversation", conversationId] });
